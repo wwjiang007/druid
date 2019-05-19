@@ -1,10 +1,30 @@
 ---
 layout: doc_page
+title: "DataSketches Quantiles Sketch module"
 ---
 
-## DataSketches Quantiles Sketch module
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
 
-This module provides Druid aggregators based on numeric quantiles DoublesSketch from [datasketches](http://datasketches.github.io/) library. Quantiles sketch is a mergeable streaming algorithm to estimate the distribution of values, and approximately answer queries about the rank of a value, probability mass function of the distribution (PMF) or histogram, cummulative distribution function (CDF), and quantiles (median, min, max, 95th percentile and such). See [Quantiles Sketch Overview](https://datasketches.github.io/docs/Quantiles/QuantilesOverview.html).
+# DataSketches Quantiles Sketch module
+
+This module provides Apache Druid (incubating) aggregators based on numeric quantiles DoublesSketch from [datasketches](http://datasketches.github.io/) library. Quantiles sketch is a mergeable streaming algorithm to estimate the distribution of values, and approximately answer queries about the rank of a value, probability mass function of the distribution (PMF) or histogram, cummulative distribution function (CDF), and quantiles (median, min, max, 95th percentile and such). See [Quantiles Sketch Overview](https://datasketches.github.io/docs/Quantiles/QuantilesOverview.html).
 
 There are three major modes of operation:
 
@@ -73,6 +93,31 @@ This returns an approximation to the histogram given an array of split points th
 ```json
 {
   "type"  : "quantilesDoublesSketchToHistogram",
+  "name": <output name>,
+  "field"  : <post aggregator that refers to a DoublesSketch (fieldAccess or another post aggregator)>,
+  "splitPoints" : <array of split points>
+}
+```
+
+#### Rank
+
+This returns an approximation to the rank of a given value that is the fraction of the distribution less than that value.
+
+```json
+{
+  "type"  : "quantilesDoublesSketchToRank",
+  "name": <output name>,
+  "field"  : <post aggregator that refers to a DoublesSketch (fieldAccess or another post aggregator)>,
+  "value" : <value>
+}
+```
+#### CDF
+
+This returns an approximation to the Cumulative Distribution Function given an array of split points that define the edges of the bins. An array of <i>m</i> unique, monotonically increasing split points divide the real number line into <i>m+1</i> consecutive disjoint intervals. The definition of an interval is inclusive of the left split point and exclusive of the right split point. The resulting array of fractions can be viewed as ranks of each split point with one additional rank that is always 1.
+
+```json
+{
+  "type"  : "quantilesDoublesSketchToCDF",
   "name": <output name>,
   "field"  : <post aggregator that refers to a DoublesSketch (fieldAccess or another post aggregator)>,
   "splitPoints" : <array of split points>

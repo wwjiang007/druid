@@ -1,9 +1,30 @@
 ---
 layout: doc_page
+title: "JavaScript Programming Guide"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+
 # JavaScript Programming Guide
 
-This page discusses how to use JavaScript to extend Druid.
+This page discusses how to use JavaScript to extend Apache Druid (incubating).
 
 ## Examples
 
@@ -15,7 +36,7 @@ JavaScript can be used to extend Druid in a variety of ways:
 - [Post-aggregators](../querying/post-aggregations.html#javascript-post-aggregator)
 - [Input parsers](../ingestion/data-formats.html#javascript)
 - [Router strategy](../development/router.html#javascript)
-- [Worker select strategy](../configuration/indexing-service.html#javascript)
+- [Worker select strategy](../configuration/index.html#javascript-worker-select-strategy)
 
 JavaScript can be injected dynamically at runtime, making it convenient to rapidly prototype new functionality
 without needing to write and deploy Druid extensions.
@@ -27,7 +48,7 @@ Druid uses the Mozilla Rhino engine at optimization level 9 to compile and execu
 Druid does not execute JavaScript functions in a sandbox, so they have full access to the machine. So Javascript
 functions allow users to execute arbitrary code inside druid process. So, by default, Javascript is disabled.
 However, on dev/staging environments or secured production environments you can enable those by setting
-the [configuration property](../configuration/index.html)
+the [configuration property](../configuration/index.html#javascript)
 `druid.javascript.enabled = true`.
 
 ## Global variables
@@ -38,7 +59,7 @@ unpredictable results if global variables are used.
 ## Performance
 
 Simple JavaScript functions typically have a slight performance penalty to native speed. More complex JavaScript
-functions can have steeper performance penalties. Druid compiles JavaScript functions once per node per query.
+functions can have steeper performance penalties. Druid compiles JavaScript functions once on each data process per query.
 
 You may need to pay special attention to garbage collection when making heavy use of JavaScript functions, especially
 garbage collection of the compiled classes themselves. Be sure to use a garbage collector configuration that supports

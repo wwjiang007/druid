@@ -1,8 +1,29 @@
 ---
 layout: doc_page
+title: "Aggregation Granularity"
 ---
 
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+
 # Aggregation Granularity
+
 The granularity field determines how data gets bucketed across the time dimension, or how it gets aggregated by hour, day, minute, etc.
 
 It can be specified either as a string for simple granularities or as an object for arbitrary granularities.
@@ -18,7 +39,7 @@ Supported granularity strings are: `all`, `none`, `second`, `minute`, `fifteen_m
 
 #### Example:
 
-Suppose you have data below stored in Druid with millisecond ingestion granularity,
+Suppose you have data below stored in Apache Druid (incubating) with millisecond ingestion granularity,
 
 ``` json
 {"timestamp": "2013-08-31T01:02:33Z", "page": "AAA", "language" : "en"}
@@ -159,7 +180,7 @@ Having a query granularity smaller than the ingestion granularity doesn't make s
 because information about that smaller granularity is not present in the indexed data.
 So, if the query granularity is smaller than the ingestion granularity, druid produces
 results that are equivalent to having set the query granularity to the ingestion granularity.
-See `queryGranularity` in [Ingestion Spec](../ingestion/index.html).
+See `queryGranularity` in [Ingestion Spec](../ingestion/ingestion-spec.html#granularityspec).
 
 
 If you change the granularity to `all`, you will get everything aggregated in 1 bucket,

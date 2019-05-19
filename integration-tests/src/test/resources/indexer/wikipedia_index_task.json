@@ -2,7 +2,7 @@
     "type": "index",
     "spec": {
         "dataSchema": {
-            "dataSource": "wikipedia_index_test",
+            "dataSource": "%%DATASOURCE%%",
             "metricsSpec": [
                 {
                     "type": "count",
@@ -58,12 +58,13 @@
             "type": "index",
             "firehose": {
                 "type": "local",
-                "baseDir": "/resources/indexer",
-                "filter": "wikipedia_index_data.json"
+                "baseDir": "/resources/data/batch_index",
+                "filter": "wikipedia_index_data*"
             }
         },
         "tuningConfig": {
-            "type": "index"
+            "type": "index",
+            "maxRowsPerSegment": 3
         }
     }
 }

@@ -1,6 +1,26 @@
 ---
 layout: doc_page
+title: "Transforming Dimension Values"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
 
 # Transforming Dimension Values
 
@@ -47,7 +67,7 @@ Please refer to the [Output Types](#output-types) section for more details.
 
 ### Filtered DimensionSpecs
 
-These are only useful for multi-value dimensions. If you have a row in druid that has a multi-value dimension with values ["v1", "v2", "v3"] and you send a groupBy/topN query grouping by that dimension with [query filter](filters.html) for value "v1". In the response you will get 3 rows containing "v1", "v2" and "v3". This behavior might be unintuitive for some use cases.
+These are only useful for multi-value dimensions. If you have a row in Apache Druid (incubating) that has a multi-value dimension with values ["v1", "v2", "v3"] and you send a groupBy/topN query grouping by that dimension with [query filter](filters.html) for value "v1". In the response you will get 3 rows containing "v1", "v2" and "v3". This behavior might be unintuitive for some use cases.
 
 It happens because "query filter" is internally used on the bitmaps and only used to match the row to be included in the query result processing. With multi-value dimensions, "query filter" behaves like a contains check, which will match the row with dimension value ["v1", "v2", "v3"]. Please see the section on "Multi-value columns" in [segment](../design/segments.html) for more details.
 Then groupBy/topN processing pipeline "explodes" all multi-value dimensions resulting 3 rows for "v1", "v2" and "v3" each.
@@ -64,6 +84,12 @@ Following filtered dimension spec retains only the values matching regex. Note t
 
 ```json
 { "type" : "regexFiltered", "delegate" : <dimensionSpec>, "pattern": <java regex pattern> }
+```
+
+Following filtered dimension spec retains only the values starting with the same prefix.
+
+```json
+{ "type" : "prefixFiltered", "delegate" : <dimensionSpec>, "prefix": <prefix string> }
 ```
 
 For more details and examples, see [multi-value dimensions](multi-value-dimensions.html).
@@ -97,7 +123,7 @@ It is illegal to set `retainMissingValue = true` and also specify a `replaceMiss
 
 A property `optimize` can be supplied to allow optimization of lookup based extraction filter (by default `optimize = true`).
 
-The second kind where it is not possible to pass at query time due to their size, will be based on an external lookup table or resource that is already registered via configuration file or/and coordinator.
+The second kind where it is not possible to pass at query time due to their size, will be based on an external lookup table or resource that is already registered via configuration file or/and Coordinator.
 
 ```json
 {
@@ -349,7 +375,7 @@ A property of `injective` can override the lookup's own sense of whether or not 
 configuration.
 
 A property `optimize` can be supplied to allow optimization of lookup based extraction filter (by default `optimize = true`).
-The optimization layer will run on the broker and it will rewrite the extraction filter as clause of selector filters.
+The optimization layer will run on the Broker and it will rewrite the extraction filter as clause of selector filters.
 For instance the following filter
 
 ```json

@@ -1,7 +1,29 @@
 ---
 layout: doc_page
+title: "Segment Metadata Queries"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+
 # Segment Metadata Queries
+
 Segment metadata queries return per-segment information about:
 
 * Cardinality of all columns in the segment
@@ -26,13 +48,13 @@ There are several main parts to a segment metadata query:
 
 |property|description|required?|
 |--------|-----------|---------|
-|queryType|This String should always be "segmentMetadata"; this is the first thing Druid looks at to figure out how to interpret the query|yes|
+|queryType|This String should always be "segmentMetadata"; this is the first thing Apache Druid (incubating) looks at to figure out how to interpret the query|yes|
 |dataSource|A String or Object defining the data source to query, very similar to a table in a relational database. See [DataSource](../querying/datasource.html) for more information.|yes|
 |intervals|A JSON Object representing ISO-8601 Intervals. This defines the time ranges to run the query over.|no|
 |toInclude|A JSON Object representing what columns should be included in the result. Defaults to "all".|no|
 |merge|Merge all individual segment metadata results into a single result|no|
 |context|See [Context](../querying/query-context.html)|no|
-|analysisTypes|A list of Strings specifying what column properties (e.g. cardinality, size) should be calculated and returned in the result. Defaults to ["cardinality", "interval", "minmax"], but can be overridden with using this [BrokerConfig](../configuration/broker.html#segment-metadata-query-config). See section [analysisTypes](#analysistypes) for more details.|no|
+|analysisTypes|A list of Strings specifying what column properties (e.g. cardinality, size) should be calculated and returned in the result. Defaults to ["cardinality", "interval", "minmax"], but can be overridden with using the [segment metadata query config](../configuration/index.html#segment-metadata-query-config). See section [analysisTypes](#analysistypes) for more details.|no|
 |lenientAggregatorMerge|If true, and if the "aggregators" analysisType is enabled, aggregators will be merged leniently. See below for details.|no|
 
 The format of the result is:
@@ -71,7 +93,7 @@ Only columns which are dimensions (ie, have type `STRING`) will have any cardina
 
 If an interval is not specified, the query will use a default interval that spans a configurable period before the end time of the most recent segment.
 
-The length of this default time period is set in the broker configuration via:
+The length of this default time period is set in the Broker configuration via:
   druid.query.segmentMetadata.defaultHistory
 
 ### toInclude
@@ -108,7 +130,7 @@ This is a list of properties that determines the amount of information returned 
 
 By default, the "cardinality", "interval", and "minmax" types will be used. If a property is not needed, omitting it from this list will result in a more efficient query.
 
-The default analysis types can be set in the broker configuration via:
+The default analysis types can be set in the Broker configuration via:
   `druid.query.segmentMetadata.defaultAnalysisTypes`
 
 Types of column analyses are described below:

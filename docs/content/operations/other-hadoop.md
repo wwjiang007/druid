@@ -1,12 +1,33 @@
 ---
 layout: doc_page
+title: "Working with different versions of Apache Hadoop"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+
 # Working with different versions of Hadoop
 
-Druid can interact with Hadoop in two ways:
+Apache Druid (incubating) can interact with Hadoop in two ways:
 
 1. [Use HDFS for deep storage](../development/extensions-core/hdfs.html) using the druid-hdfs-storage extension.
-2. [Batch-load data from Hadoop](../ingestion/batch-ingestion.html) using Map/Reduce jobs.
+2. [Batch-load data from Hadoop](../ingestion/hadoop.html) using Map/Reduce jobs.
 
 These are not necessarily linked together; you can load data with Hadoop jobs into a non-HDFS deep storage (like S3),
 and you can use HDFS for deep storage even if you're loading data from streams rather than using Hadoop jobs.
@@ -16,7 +37,7 @@ For best results, use these tips when configuring Druid to interact with your fa
 ## Tip #1: Place Hadoop XMLs on Druid classpath
 
 Place your Hadoop configuration XMLs (core-site.xml, hdfs-site.xml, yarn-site.xml, mapred-site.xml) on the classpath
-of your Druid nodes. You can do this by copying them into `conf/druid/_common/core-site.xml`,
+of your Druid processes. You can do this by copying them into `conf/druid/_common/core-site.xml`,
 `conf/druid/_common/hdfs-site.xml`, and so on. This allows Druid to find your Hadoop cluster and properly submit jobs.
 
 ## Tip #2: Classloader modification on Hadoop (Map/Reduce jobs only)
@@ -34,8 +55,8 @@ Generally, you should only set one of these parameters, not both.
 
 These properties can be set in either one of the following ways:
 
-- Using the task definition, e.g. add `"mapreduce.job.classloader": "true"` to the `jobProperties` of the `tuningConfig` of your indexing task (see the [batch ingestion documentation](../ingestion/batch-ingestion.html)).
-- Using system properties, e.g. on the middleManager set `druid.indexer.runner.javaOpts=... -Dhadoop.mapreduce.job.classloader=true`.
+- Using the task definition, e.g. add `"mapreduce.job.classloader": "true"` to the `jobProperties` of the `tuningConfig` of your indexing task (see the [Hadoop batch ingestion documentation](../ingestion/hadoop.html)).
+- Using system properties, e.g. on the MiddleManager set `druid.indexer.runner.javaOpts=... -Dhadoop.mapreduce.job.classloader=true`.
 
 ### Overriding specific classes
 
@@ -67,7 +88,7 @@ classloader.
 
 1. HDFS deep storage uses jars from `extensions/druid-hdfs-storage/` to read and write Druid data on HDFS.
 2. Batch ingestion uses jars from `hadoop-dependencies/` to submit Map/Reduce jobs (location customizable via the
-`druid.extensions.hadoopDependenciesDir` runtime property; see [Configuration](../configuration/index.html)).
+`druid.extensions.hadoopDependenciesDir` runtime property; see [Configuration](../configuration/index.html#extensions)).
 
 `hadoop-client:2.8.3` is the default version of the Hadoop client bundled with Druid for both purposes. This works with
 many Hadoop distributions (the version does not necessarily need to match), but if you run into issues, you can instead
@@ -83,7 +104,7 @@ the main Druid pom.xml and rebuilding the distribution by running `mvn package`.
 If you have issues with Map/Reduce jobs, you can switch your Hadoop client libraries without rebuilding Druid. You can
 do this by adding a new set of libraries to the `hadoop-dependencies/` directory (or another directory specified by
 druid.extensions.hadoopDependenciesDir) and then using `hadoopDependencyCoordinates` in the
-[Hadoop Index Task](../ingestion/batch-ingestion.html) to specify the Hadoop dependencies you want Druid to load.
+[Hadoop Index Task](../ingestion/hadoop.html) to specify the Hadoop dependencies you want Druid to load.
 
 Example:
 
@@ -114,7 +135,7 @@ hadoop-dependencies/
 
 As you can see, under `hadoop-client`, there are two sub-directories, each denotes a version of `hadoop-client`.
 
-Next, use `hadoopDependencyCoordinates` in [Hadoop Index Task](../ingestion/batch-ingestion.html) to specify the Hadoop dependencies you want Druid to load.
+Next, use `hadoopDependencyCoordinates` in [Hadoop Index Task](../ingestion/hadoop.html) to specify the Hadoop dependencies you want Druid to load.
 
 For example, in your Hadoop Index Task spec file, you can write:
 
@@ -160,7 +181,7 @@ For more about building Druid, please see [Building Druid](../development/build.
 
 **Alternate workaround - 2**
 
-Another workaround solution is to build a custom fat jar of Druid using [sbt](http://www.scala-sbt.org/), which manually excludes all the conflicting Jackson dependencies, and then put this fat jar in the classpath of the command that starts overlord indexing service. To do this, please follow the following steps.
+Another workaround solution is to build a custom fat jar of Druid using [sbt](http://www.scala-sbt.org/), which manually excludes all the conflicting Jackson dependencies, and then put this fat jar in the classpath of the command that starts Overlord indexing service. To do this, please follow the following steps.
 
 (1) Download and install sbt.
 
@@ -195,25 +216,25 @@ If sbt is not your choice, you can also use `maven-shade-plugin` to make a fat j
 
  ```xml
  <dependency>
-      <groupId>io.druid.extensions</groupId>
+      <groupId>org.apache.druid.extensions</groupId>
       <artifactId>druid-avro-extensions</artifactId>
       <version>${project.parent.version}</version>
   </dependency>
 
   <dependency>
-      <groupId>io.druid.extensions.contrib</groupId>
+      <groupId>org.apache.druid.extensions</groupId>
       <artifactId>druid-parquet-extensions</artifactId>
       <version>${project.parent.version}</version>
   </dependency>
 
   <dependency>
-      <groupId>io.druid.extensions</groupId>
+      <groupId>org.apache.druid.extensions</groupId>
       <artifactId>druid-hdfs-storage</artifactId>
       <version>${project.parent.version}</version>
   </dependency>
 
   <dependency>
-      <groupId>io.druid.extensions</groupId>
+      <groupId>org.apache.druid.extensions</groupId>
       <artifactId>mysql-metadata-storage</artifactId>
       <version>${project.parent.version}</version>
   </dependency>
@@ -274,6 +295,6 @@ java -Xmx32m \
   -Dfile.encoding=UTF-8 -Duser.timezone=UTC \
   -classpath config/hadoop:config/overlord:config/_common:$SELF_CONTAINED_JAR:$HADOOP_DISTRIBUTION/etc/hadoop \
   -Djava.security.krb5.conf=$KRB5 \
-  io.druid.cli.Main index hadoop \
+  org.apache.druid.cli.Main index hadoop \
   $config_path
 ```

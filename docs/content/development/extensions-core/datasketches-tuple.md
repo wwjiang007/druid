@@ -1,10 +1,30 @@
 ---
 layout: doc_page
+title: "DataSketches Tuple Sketch module"
 ---
 
-## DataSketches Tuple Sketch module
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
 
-This module provides Druid aggregators based on Tuple sketch from [datasketches](http://datasketches.github.io/) library. ArrayOfDoublesSketch sketches extend the functionality of the count-distinct Theta sketches by adding arrays of double values associated with unique keys.
+# DataSketches Tuple Sketch module
+
+This module provides Apache Druid (incubating) aggregators based on Tuple sketch from [datasketches](http://datasketches.github.io/) library. ArrayOfDoublesSketch sketches extend the functionality of the count-distinct Theta sketches by adding arrays of double values associated with unique keys.
 
 To use this aggregator, make sure you [include](../../operations/including-extensions.html) the extension in your config file:
 
@@ -123,7 +143,7 @@ Returns a result of a specified set operation on the given array of sketches. Su
 {
   "type"  : "arrayOfDoublesSketchSetOp",
   "name": <output name>,
-  "func": <"UNION"|"INTERSECT"|"NOT">,
+  "operation": <"UNION"|"INTERSECT"|"NOT">,
   "fields"  : <array of post aggregators to access sketch aggregators or post aggregators to allow arbitrary combination of set operations>,
   "nominalEntries" : <parameter that determines the accuracy and size of the sketch>,
   "numberOfValues" : <number of values associated with each distinct key>

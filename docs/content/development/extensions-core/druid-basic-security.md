@@ -1,16 +1,36 @@
 ---
 layout: doc_page
+title: "Basic Security"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
 
 # Druid Basic Security
 
-This extension adds:
+This Apache Druid (incubating) extension adds:
 - an Authenticator which supports [HTTP Basic authentication](https://en.wikipedia.org/wiki/Basic_access_authentication)
 - an Authorizer which implements basic role-based access control
 
 Make sure to [include](../../operations/including-extensions.html) `druid-basic-security` as an extension.
 
-Please see [Authentication and Authorization](../../configuration/auth.html) for more information on the extension interfaces being implemented.
+Please see [Authentication and Authorization](../../design/auth.html) for more information on the extension interfaces being implemented.
 
 ## Configuration
 
@@ -23,10 +43,10 @@ These configuration properties should be added to the common runtime properties 
 ### Properties
 |Property|Description|Default|required|
 |--------|-----------|-------|--------|
-|`druid.auth.basic.common.pollingPeriod`|Defines in milliseconds how often nodes should poll the coordinator for the current authenticator/authorizer database state.|60000|No|
+|`druid.auth.basic.common.pollingPeriod`|Defines in milliseconds how often processes should poll the Coordinator for the current authenticator/authorizer database state.|60000|No|
 |`druid.auth.basic.common.maxRandomDelay`|Defines in milliseconds the amount of random delay to add to the pollingPeriod, to spread polling requests across time.|6000|No|
-|`druid.auth.basic.common.maxSyncRetries`|Determines how many times a service will retry if the authentication/authorization database state sync with the coordinator fails.|10|No|
-|`druid.auth.basic.common.cacheDirectory`|If defined, snapshots of the basic Authenticator and Authorizer database caches will be stored on disk in this directory. If this property is defined, when a service is starting, it will attempt to initialize its caches from these on-disk snapshots, if the service is unable to initialize its state by communicating with the coordinator.|null|No|
+|`druid.auth.basic.common.maxSyncRetries`|Determines how many times a service will retry if the authentication/authorization database state sync with the Coordinator fails.|10|No|
+|`druid.auth.basic.common.cacheDirectory`|If defined, snapshots of the basic Authenticator and Authorizer database caches will be stored on disk in this directory. If this property is defined, when a service is starting, it will attempt to initialize its caches from these on-disk snapshots, if the service is unable to initialize its state by communicating with the Coordinator.|null|No|
 
 
 ### Creating an Authenticator
@@ -39,7 +59,7 @@ druid.auth.authenticator.MyBasicAuthenticator.initialInternalClientPassword=pass
 druid.auth.authenticator.MyBasicAuthenticator.authorizerName=MyBasicAuthorizer
 ```
 
-To use the Basic authenticator, add an authenticator with type `basic` to the authenticatorChain. 
+To use the Basic authenticator, add an authenticator with type `basic` to the authenticatorChain.
 
 Configuration of the named authenticator is assigned through properties with the form:
 
@@ -53,9 +73,9 @@ The configuration examples in the rest of this document will use "MyBasicAuthent
 #### Properties
 |Property|Description|Default|required|
 |--------|-----------|-------|--------|
-|`druid.auth.authenticator.MyBasicAuthenticator.initialAdminPassword`|Initial password for the automatically created default admin user. If no password is specified, the default admin user will not be created. If the default admin user already exists, setting this property will affect its password.|null|No|
-|`druid.auth.authenticator.MyBasicAuthenticator.initialInternalClientPassword`|Initial password for the default internal system user, used for internal node communication. If no password is specified, the default internal system user will not be created. If the default internal system user already exists, setting this property will affect its password.|null|No|
-|`druid.auth.authenticator.MyBasicAuthenticator.enableCacheNotifications`|If true, the coordinator will notify Druid nodes whenever a configuration change to this Authenticator occurs, allowing them to immediately update their state without waiting for polling.|true|No|
+|`druid.auth.authenticator.MyBasicAuthenticator.initialAdminPassword`|Initial [Password Provider](../../operations/password-provider.html) for the automatically created default admin user. If no password is specified, the default admin user will not be created. If the default admin user already exists, setting this property will not affect its password.|null|No|
+|`druid.auth.authenticator.MyBasicAuthenticator.initialInternalClientPassword`|Initial [Password Provider](../../operations/password-provider.html) for the default internal system user, used for internal process communication. If no password is specified, the default internal system user will not be created. If the default internal system user already exists, setting this property will not affect its password.|null|No|
+|`druid.auth.authenticator.MyBasicAuthenticator.enableCacheNotifications`|If true, the Coordinator will notify Druid processes whenever a configuration change to this Authenticator occurs, allowing them to immediately update their state without waiting for polling.|true|No|
 |`druid.auth.authenticator.MyBasicAuthenticator.cacheNotificationTimeout`|The timeout in milliseconds for the cache notifications.|5000|No|
 |`druid.auth.authenticator.MyBasicAuthenticator.credentialIterations`|Number of iterations to use for password hashing.|10000|No|
 |`druid.auth.authenticator.MyBasicAuthenticator.authorizerName`|Authorizer that requests should be directed to|N/A|Yes|
@@ -74,7 +94,7 @@ druid.escalator.authorizerName=MyBasicAuthorizer
 |Property|Description|Default|required|
 |--------|-----------|-------|--------|
 |`druid.escalator.internalClientUsername`|The escalator will use this username for requests made as the internal systerm user.|n/a|Yes|
-|`druid.escalator.internalClientPassword`|The escalator will use this password for requests made as the internal system user.|n/a|Yes|
+|`druid.escalator.internalClientPassword`|The escalator will use this [Password Provider](../../operations/password-provider.html) for requests made as the internal system user.|n/a|Yes|
 |`druid.escalator.authorizerName`|Authorizer that requests should be directed to.|n/a|Yes|
 
 
@@ -96,7 +116,7 @@ druid.auth.authorizer.<authorizerName>.<authorizerProperty>
 #### Properties
 |Property|Description|Default|required|
 |--------|-----------|-------|--------|
-|`druid.auth.authorizer.MyBasicAuthorizer.enableCacheNotifications`|If true, the coordinator will notify Druid nodes whenever a configuration change to this Authorizer occurs, allowing them to immediately update their state without waiting for polling.|true|No|
+|`druid.auth.authorizer.MyBasicAuthorizer.enableCacheNotifications`|If true, the Coordinator will notify Druid processes whenever a configuration change to this Authorizer occurs, allowing them to immediately update their state without waiting for polling.|true|No|
 |`druid.auth.authorizer.MyBasicAuthorizer.cacheNotificationTimeout`|The timeout in milliseconds for the cache notifications.|5000|No|
 
 ## Usage
@@ -152,6 +172,87 @@ Return a list of all user names.
 `GET(/druid-ext/basic-security/authorization/db/{authorizerName}/users/{userName})`
 Return the name and role information of the user with name {userName}
 
+Example output:
+```json
+{
+  "name": "druid2",
+  "roles": [
+    "druidRole"
+  ]
+}
+```
+
+This API supports the following flags:
+- `?full`: The response will also include the full information for each role currently assigned to the user.
+
+Example output:
+```json
+{
+  "name": "druid2",
+  "roles": [
+    {
+      "name": "druidRole",
+      "permissions": [
+        {
+          "resourceAction": {
+            "resource": {
+              "name": "A",
+              "type": "DATASOURCE"
+            },
+            "action": "READ"
+          },
+          "resourceNamePattern": "A"
+        },
+        {
+          "resourceAction": {
+            "resource": {
+              "name": "C",
+              "type": "CONFIG"
+            },
+            "action": "WRITE"
+          },
+          "resourceNamePattern": "C"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The output format of this API when `?full` is specified is deprecated and in later versions will be switched to the output format used when both `?full` and `?simplifyPermissions` flag is set. 
+
+The `resourceNamePattern` is a compiled version of the resource name regex. It is redundant and complicates the use of this API for clients such as frontends that edit the authorization configuration, as the permission format in this output does not match the format used for adding permissions to a role.
+
+- `?full?simplifyPermissions`: When both `?full` and `?simplifyPermissions` are set, the permissions in the output will contain only a list of `resourceAction` objects, without the extraneous `resourceNamePattern` field.
+
+```json
+{
+  "name": "druid2",
+  "roles": [
+    {
+      "name": "druidRole",
+      "users": null,
+      "permissions": [
+        {
+          "resource": {
+            "name": "A",
+            "type": "DATASOURCE"
+          },
+          "action": "READ"
+        },
+        {
+          "resource": {
+            "name": "C",
+            "type": "CONFIG"
+          },
+          "action": "WRITE"
+        }
+      ]
+    }
+  ]
+}
+```
+
 `POST(/druid-ext/basic-security/authorization/db/{authorizerName}/users/{userName})`
 Create a new user with name {userName}
 
@@ -164,7 +265,56 @@ Delete the user with name {userName}
 Return a list of all role names.
 
 `GET(/druid-ext/basic-security/authorization/db/{authorizerName}/roles/{roleName})`
-Return name and permissions for the role named {roleName}
+Return name and permissions for the role named {roleName}.
+
+Example output:
+```json
+{
+  "name": "druidRole2",
+  "permissions": [
+    {
+      "resourceAction": {
+        "resource": {
+          "name": "E",
+          "type": "DATASOURCE"
+        },
+        "action": "WRITE"
+      },
+      "resourceNamePattern": "E"
+    }
+  ]
+}
+```
+
+The default output format of this API is deprecated and in later versions will be switched to the output format used when the `?simplifyPermissions` flag is set. The `resourceNamePattern` is a compiled version of the resource name regex. It is redundant and complicates the use of this API for clients such as frontends that edit the authorization configuration, as the permission format in this output does not match the format used for adding permissions to a role.
+
+This API supports the following flags:
+
+- `?full`: The output will contain an extra `users` list, containing the users that currently have this role.
+
+```json
+"users":["druid"]
+```
+
+- `?simplifyPermissions`: The permissions in the output will contain only a list of `resourceAction` objects, without the extraneous `resourceNamePattern` field. The `users` field will be null when `?full` is not specified.
+
+Example output:
+```json
+{
+  "name": "druidRole2",
+  "users": null,
+  "permissions": [
+    {
+      "resource": {
+        "name": "E",
+        "type": "DATASOURCE"
+      },
+      "action": "WRITE"
+    }
+  ]
+}
+```
+
 
 `POST(/druid-ext/basic-security/authorization/db/{authorizerName}/roles/{roleName})`
 Create a new role with name {roleName}.
@@ -189,14 +339,14 @@ Set the permissions of {roleName}. This replaces the previous set of permissions
 Content: List of JSON Resource-Action objects, e.g.:
 ```
 [
-{ 
+{
   "resource": {
     "name": "wiki.*",
     "type": "DATASOURCE"
   },
   "action": "READ"
 },
-{ 
+{
   "resource": {
     "name": "wikiticker",
     "type": "DATASOURCE"
@@ -206,7 +356,7 @@ Content: List of JSON Resource-Action objects, e.g.:
 ]
 ```
 
-The "name" field for resources in the permission definitions are regexes used to match resource names during authorization checks. 
+The "name" field for resources in the permission definitions are regexes used to match resource names during authorization checks.
 
 Please see [Defining permissions](#defining-permissions) for more details.
 
@@ -219,7 +369,7 @@ Return the current load status of the local caches of the authorization database
 ### Authenticator
 If `druid.auth.authenticator.<authenticator-name>.initialAdminPassword` is set, a default admin user named "admin" will be created, with the specified initial password. If this configuration is omitted, the "admin" user will not be created.
 
-If `druid.auth.authenticator.<authenticator-name>.initialInternalClientPassword` is set, a default internal system user named "druid_system" will be created, with the specified initial password. If this configuration is omitted, the "druid_system" user will not be created. 
+If `druid.auth.authenticator.<authenticator-name>.initialInternalClientPassword` is set, a default internal system user named "druid_system" will be created, with the specified initial password. If this configuration is omitted, the "druid_system" user will not be created.
 
 
 ### Authorizer
@@ -240,7 +390,7 @@ There are two possible resource names for the "CONFIG" resource type, "CONFIG" a
 
 "CONFIG" resource name covers the following endpoints:
 
-|Endpoint|Node Type|
+|Endpoint|Process Type|
 |--------|---------|
 |`/druid/coordinator/v1/config`|coordinator|
 |`/druid/indexer/v1/worker`|overlord|
@@ -250,16 +400,17 @@ There are two possible resource names for the "CONFIG" resource type, "CONFIG" a
 
 "security" resource name covers the following endpoint:
 
-|Endpoint|Node Type|
+|Endpoint|Process Type|
 |--------|---------|
-|`/druid/coordinator/v1/security`|coordinator|
+|`/druid-ext/basic-security/authentication`|coordinator|
+|`/druid-ext/basic-security/authorization`|coordinator|
 
 ### STATE
 There is only one possible resource name for the "STATE" config resource type, "STATE". Granting a user access to STATE resources allows them to access the following endpoints.
 
 "STATE" resource name covers the following endpoints:
 
-|Endpoint|Node Type|
+|Endpoint|Process Type|
 |--------|---------|
 |`/druid/coordinator/v1`|coordinator|
 |`/druid/coordinator/v1/rules`|coordinator|
@@ -276,20 +427,39 @@ There is only one possible resource name for the "STATE" config resource type, "
 |`/druid/worker/v1/enabled`|middleManager|
 |`/druid/worker/v1/tasks`|middleManager|
 |`/druid/worker/v1/task/{taskid}/shutdown`|middleManager|
-|`/druid/worker/v1//task/{taskid}/log`|middleManager|
+|`/druid/worker/v1/task/{taskid}/log`|middleManager|
 |`/druid/historical/v1`|historical|
 |`/druid-internal/v1/segments/`|historical|
 |`/druid-internal/v1/segments/`|peon|
 |`/druid-internal/v1/segments/`|realtime|
-|`/status`|all nodes|
+|`/status`|all process types|
+
+### HTTP methods
+
+For information on what HTTP methods are supported on a particular request endpoint, please refer to the [API documentation](../../operations/api-reference.html).
+
+GET requires READ permission, while POST and DELETE require WRITE permission.
+
+### SQL Permissions
+
+Queries on Druid datasources require DATASOURCE READ permissions for the specified datasource.
+
+Queries on the [INFORMATION_SCHEMA tables](../../querying/sql.html#information-schema) will
+return information about datasources that the caller has DATASOURCE READ access to. Other
+datasources will be omitted.
+
+Queries on the [system schema tables](../../querying/sql.html#system-schema) require the following permissions:
+- `segments`: Segments will be filtered based on DATASOURCE READ permissions.
+- `servers`: The user requires STATE READ permissions.
+- `server_segments`: The user requires STATE READ permissions and segments will be filtered based on DATASOURCE READ permissions.
+- `tasks`: Tasks will be filtered based on DATASOURCE READ permissions.
 
 ## Configuration Propagation
 
-To prevent excessive load on the coordinator, the Authenticator and Authorizer user/role database state is cached on each Druid node.
+To prevent excessive load on the Coordinator, the Authenticator and Authorizer user/role database state is cached on each Druid process.
 
-Each node will periodically poll the coordinator for the latest database state, controlled by the `druid.auth.basic.common.pollingPeriod` and `druid.auth.basic.common.maxRandomDelay` properties.
+Each process will periodically poll the Coordinator for the latest database state, controlled by the `druid.auth.basic.common.pollingPeriod` and `druid.auth.basic.common.maxRandomDelay` properties.
 
-When a configuration update occurs, the coordinator can optionally notify each node with the updated database state. This behavior is controlled by the `enableCacheNotifications` and `cacheNotificationTimeout` properties on Authenticators and Authorizers.
+When a configuration update occurs, the Coordinator can optionally notify each process with the updated database state. This behavior is controlled by the `enableCacheNotifications` and `cacheNotificationTimeout` properties on Authenticators and Authorizers.
 
-Note that because of the caching, changes made to the user/role database may not be immediately reflected at each Druid node.
-
+Note that because of the caching, changes made to the user/role database may not be immediately reflected at each Druid process.

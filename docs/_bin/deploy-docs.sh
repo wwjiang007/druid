@@ -1,5 +1,20 @@
 #!/bin/bash -e
 
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 opt_api=1
 opt_docs=1
 while getopts ":adn" opt; do
@@ -67,12 +82,15 @@ src=$tmp/druid
 echo "Using Version     [$version]"
 echo "Working directory [$tmp]"
 
-git clone -q --depth 1 git@github.com:druid-io/druid-io.github.io.git "$target"
+git clone -q --depth 1 git@github.com:apache/incubator-druid-io.github.io.git "$target"
 
 remote=$(git -C "$druid" config --local --get "remote.$origin.url")
 git clone -q --depth 1 --branch $branch $remote "$src"
 
 if [ -n "$opt_docs" ] ; then
+  # Check for broken links
+  "$src/docs/_bin/broken-link-check.py" "$src/docs/content" "$src/docs/_redirects.json"
+
   # Copy docs
   mkdir -p $target/docs/$version
   rsync -a --delete "$src/docs/content/" $target/docs/$version
@@ -104,7 +122,7 @@ if [ -z "$opt_dryrun" ]; then
 
   if [ -n "$GIT_TOKEN" ]; then
   curl -u "$GIT_TOKEN:x-oauth-basic" -XPOST -d@- \
-     https://api.github.com/repos/druid-io/druid-io.github.io/pulls <<EOF
+     https://api.github.com/repos/apache/incubator-druid-io.github.io/pulls <<EOF
 {
   "title" : "Update Documentation for $version",
   "head"  : "$updatebranch",
@@ -114,7 +132,7 @@ EOF
 
   else
     echo "GitHub personal token not provided, not submitting pull request"
-    echo "Please go to https://github.com/druid-io/druid-io.github.io and submit a pull request from the \`$updatebranch\` branch"
+    echo "Please go to https://github.com/apache/incubator-druid-io.github.io and submit a pull request from the \`$updatebranch\` branch"
   fi
 
   rm -rf $tmp

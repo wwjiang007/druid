@@ -1,14 +1,34 @@
 ---
 layout: doc_page
+title: "Kafka Emitter"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
 
 # Kafka Emitter
 
-To use this extension, make sure to [include](../../operations/including-extensions.html) `kafka-emitter` extension.
+To use this Apache Druid (incubating) extension, make sure to [include](../../operations/including-extensions.html) `kafka-emitter` extension.
 
 ## Introduction
 
-This extension emits Druid metrics to a [Kafka](https://kafka.apache.org) directly with JSON format.<br>
+This extension emits Druid metrics to [Apache Kafka](https://kafka.apache.org) directly with JSON format.<br>
 Currently, Kafka has not only their nice ecosystem but also consumer API readily available. 
 So, If you currently use Kafka, It's easy to integrate various tool or UI 
 to monitor the status of your Druid cluster with this extension.

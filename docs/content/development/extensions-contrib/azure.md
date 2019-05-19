@@ -1,14 +1,34 @@
 ---
 layout: doc_page
+title: "Microsoft Azure"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
 
 # Microsoft Azure
 
-To use this extension, make sure to [include](../../operations/including-extensions.html) `druid-azure-extensions` extension.
+To use this Apache Druid (incubating) extension, make sure to [include](../../operations/including-extensions.html) `druid-azure-extensions` extension.
 
 ## Deep Storage
 
-[Microsoft Azure Storage](http://azure.microsoft.com/en-us/services/storage/) is another option for deep storage. This requires some additional druid configuration.
+[Microsoft Azure Storage](http://azure.microsoft.com/en-us/services/storage/) is another option for deep storage. This requires some additional Druid configuration.
 
 |Property|Possible Values|Description|Default|
 |--------|---------------|-----------|-------|
@@ -32,6 +52,9 @@ Data is newline delimited, with one JSON object per line and parsed as per the `
 The storage account is shared with the one used for Azure deep storage functionality, but blobs can be in a different container.
 
 As with the S3 blobstore, it is assumed to be gzipped if the extension ends in .gz
+
+This firehose is _splittable_ and can be used by [native parallel index tasks](../../ingestion/native_tasks.html#parallel-index-task).
+Since each split represents an object in this firehose, each worker task of `index_parallel` will read an object.
 
 Sample spec:
 

@@ -1,12 +1,34 @@
 ---
 layout: doc_page
+title: "Filter groupBy Query Results"
 ---
+
+<!--
+  ~ Licensed to the Apache Software Foundation (ASF) under one
+  ~ or more contributor license agreements.  See the NOTICE file
+  ~ distributed with this work for additional information
+  ~ regarding copyright ownership.  The ASF licenses this file
+  ~ to you under the Apache License, Version 2.0 (the
+  ~ "License"); you may not use this file except in compliance
+  ~ with the License.  You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing,
+  ~ software distributed under the License is distributed on an
+  ~ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+  ~ KIND, either express or implied.  See the License for the
+  ~ specific language governing permissions and limitations
+  ~ under the License.
+  -->
+
 # Filter groupBy Query Results
+
 A having clause is a JSON object identifying which rows from a groupBy query should be returned, by specifying conditions on aggregated values.
 
 It is essentially the equivalent of the HAVING clause in SQL.
 
-Druid supports the following types of having clauses.
+Apache Druid (incubating) supports the following types of having clauses.
 
 ### Query filters
 
@@ -16,8 +38,14 @@ The grammar for a query filter HavingSpec is:
 
 ```json
 {
-    "type" : "filter",
-    "filter" : <any Druid query filter>
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type" : "filter",
+            "filter" : <any Druid query filter>
+        }
 }
 ```
 
@@ -26,12 +54,18 @@ For example, to use a selector filter:
 
 ```json
 {
-    "type" : "filter",
-    "filter" : {
-      "type": "selector",
-      "dimension" : "<dimension>",
-      "value" : "<dimension_value>"
-    }
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type" : "filter",
+            "filter" : {
+              "type": "selector",
+              "dimension" : "<dimension>",
+              "value" : "<dimension_value>"
+            }
+        }
 }
 ```
 
@@ -47,9 +81,15 @@ Here's an example of a having-clause numeric filter:
 
 ```json
 {
-    "type": "greaterThan",
-    "aggregation": "myAggMetric",
-    "value": 100
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type": "greaterThan",
+            "aggregation": "<aggregate_metric>",
+            "value": <numeric_value>
+        }
 }
 ```
 
@@ -60,9 +100,15 @@ The grammar for an `equalTo` filter is as follows:
 
 ```json
 {
-    "type": "equalTo",
-    "aggregation": "<aggregate_metric>",
-    "value": <numeric_value>
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type": "equalTo",
+            "aggregation": "<aggregate_metric>",
+            "value": <numeric_value>
+        }
 }
 ```
 
@@ -75,9 +121,15 @@ The grammar for a `greaterThan` filter is as follows:
 
 ```json
 {
-    "type": "greaterThan",
-    "aggregation": "<aggregate_metric>",
-    "value": <numeric_value>
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type": "greaterThan",
+            "aggregation": "<aggregate_metric>",
+            "value": <numeric_value>
+        }
 }
 ```
 
@@ -90,9 +142,15 @@ The grammar for a `greaterThan` filter is as follows:
 
 ```json
 {
-    "type": "lessThan",
-    "aggregation": "<aggregate_metric>",
-    "value": <numeric_value>
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type": "lessThan",
+            "aggregation": "<aggregate_metric>",
+            "value": <numeric_value>
+        }
 }
 ```
 
@@ -109,9 +167,15 @@ The grammar for a `dimSelector` filter is as follows:
 
 ```json
 {
-    "type": "dimSelector",
-    "dimension": "<dimension>",
-    "value": <dimension_value>
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+       {
+            "type": "dimSelector",
+            "dimension": "<dimension>",
+            "value": <dimension_value>
+        }
 }
 ```
 
@@ -124,12 +188,27 @@ The grammar for an AND filter is as follows:
 
 ```json
 {
-    "type": "and",
-    "havingSpecs": [<having clause>, <having clause>, ...]
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type": "and",
+            "havingSpecs": [        
+                {
+                    "type": "greaterThan",
+                    "aggregation": "<aggregate_metric>",
+                    "value": <numeric_value>
+                },
+                {
+                    "type": "lessThan",
+                    "aggregation": "<aggregate_metric>",
+                    "value": <numeric_value>
+                }
+            ]
+        }
 }
 ```
-
-The having clauses in `havingSpecs` can be any other having clause defined on this page.
 
 #### OR
 
@@ -137,12 +216,27 @@ The grammar for an OR filter is as follows:
 
 ```json
 {
-    "type": "or",
-    "havingSpecs": [<having clause>, <having clause>, ...]
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+            "type": "or",
+            "havingSpecs": [        
+                {
+                    "type": "greaterThan",
+                    "aggregation": "<aggregate_metric>",
+                    "value": <numeric_value>
+                },
+                {
+                    "type": "equalTo",
+                    "aggregation": "<aggregate_metric>",
+                    "value": <numeric_value>
+                }
+            ]
+        }
 }
 ```
-
-The having clauses in `havingSpecs` can be any other having clause defined on this page.
 
 #### NOT
 
@@ -150,9 +244,18 @@ The grammar for a NOT filter is as follows:
 
 ```json
 {
-    "type": "not",
-    "havingSpec": <having clause>
+    "queryType": "groupBy",
+    "dataSource": "sample_datasource",
+    ...
+    "having": 
+        {
+        "type": "not",
+        "havingSpec":         
+            {
+                "type": "equalTo",
+                "aggregation": "<aggregate_metric>",
+                "value": <numeric_value>
+            }
+        }
 }
 ```
-
-The having clause specified at `havingSpec` can be any other having clause defined on this page.
