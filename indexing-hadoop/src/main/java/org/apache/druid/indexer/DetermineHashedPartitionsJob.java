@@ -96,7 +96,7 @@ public class DetermineHashedPartitionsJob implements Jobby
           StringUtils.format("%s-determine_partitions_hashed-%s", config.getDataSource(), config.getIntervals())
       );
 
-      JobHelper.injectSystemProperties(groupByJob);
+      JobHelper.injectSystemProperties(groupByJob.getConfiguration(), config);
       config.addJobProperties(groupByJob);
       groupByJob.setMapperClass(DetermineCardinalityMapper.class);
       groupByJob.setMapOutputKeyClass(LongWritable.class);
@@ -132,7 +132,7 @@ public class DetermineHashedPartitionsJob implements Jobby
       try {
         if (!groupByJob.waitForCompletion(true)) {
           log.error("Job failed: %s", groupByJob.getJobID());
-          failureCause = Utils.getFailureMessage(groupByJob, config.JSON_MAPPER);
+          failureCause = Utils.getFailureMessage(groupByJob, HadoopDruidIndexerConfig.JSON_MAPPER);
           return false;
         }
       }
@@ -154,7 +154,7 @@ public class DetermineHashedPartitionsJob implements Jobby
         if (!Utils.exists(groupByJob, fileSystem, intervalInfoPath)) {
           throw new ISE("Path[%s] didn't exist!?", intervalInfoPath);
         }
-        List<Interval> intervals = config.JSON_MAPPER.readValue(
+        List<Interval> intervals = HadoopDruidIndexerConfig.JSON_MAPPER.readValue(
             Utils.openInputStream(groupByJob, intervalInfoPath),
             new TypeReference<List<Interval>>() {}
         );
@@ -178,7 +178,7 @@ public class DetermineHashedPartitionsJob implements Jobby
           fileSystem = partitionInfoPath.getFileSystem(groupByJob.getConfiguration());
         }
         if (Utils.exists(groupByJob, fileSystem, partitionInfoPath)) {
-          final Long numRows = config.JSON_MAPPER.readValue(
+          final Long numRows = HadoopDruidIndexerConfig.JSON_MAPPER.readValue(
               Utils.openInputStream(groupByJob, partitionInfoPath),
               Long.class
           );
@@ -264,8 +264,11 @@ public class DetermineHashedPartitionsJob implements Jobby
   public static class DetermineCardinalityMapper extends HadoopDruidIndexerMapper<LongWritable, BytesWritable>
   {
     private static HashFunction hashFunction = Hashing.murmur3_128();
+    @Nullable
     private Granularity rollupGranularity = null;
+    @Nullable
     private Map<Interval, HyperLogLogCollector> hyperLogLogs;
+    @Nullable
     private HadoopDruidIndexerConfig config;
     private boolean determineIntervals;
 
@@ -307,9 +310,7 @@ public class DetermineHashedPartitionsJob implements Jobby
                          .getSegmentGranularity()
                          .bucket(DateTimes.utc(inputRow.getTimestampFromEpoch()));
 
-        if (!hyperLogLogs.containsKey(interval)) {
-          hyperLogLogs.put(interval, HyperLogLogCollector.makeLatestCollector());
-        }
+        hyperLogLogs.computeIfAbsent(interval, intv -> HyperLogLogCollector.makeLatestCollector());
       } else {
         final Optional<Interval> maybeInterval = config.getGranularitySpec()
                                                        .bucketInterval(DateTimes.utc(inputRow.getTimestampFromEpoch()));
@@ -351,6 +352,7 @@ public class DetermineHashedPartitionsJob implements Jobby
       extends Reducer<LongWritable, BytesWritable, NullWritable, NullWritable>
   {
     private final List<Interval> intervals = new ArrayList<>();
+    @Nullable
     protected HadoopDruidIndexerConfig config = null;
     private boolean determineIntervals;
 
@@ -431,8 +433,10 @@ public class DetermineHashedPartitionsJob implements Jobby
   public static class DetermineHashedPartitionsPartitioner
       extends Partitioner<LongWritable, BytesWritable> implements Configurable
   {
+    @Nullable
     private Configuration config;
     private boolean determineIntervals;
+    @Nullable
     private Map<LongWritable, Integer> reducerLookup;
 
     @Override
