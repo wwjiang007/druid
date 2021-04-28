@@ -29,6 +29,7 @@ import org.apache.druid.query.expression.ExprUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -58,6 +59,7 @@ public class JoinConditionAnalysis
   private final boolean isAlwaysTrue;
   private final boolean canHashJoin;
   private final Set<String> rightKeyColumns;
+  private final Set<String> requiredColumns;
 
   private JoinConditionAnalysis(
       final String originalExpression,
@@ -79,7 +81,8 @@ public class JoinConditionAnalysis
                                                                 .allMatch(expr -> expr.isLiteral() && expr.eval(
                                                                     ExprUtils.nilBindings()).asBoolean());
     canHashJoin = nonEquiConditions.stream().allMatch(Expr::isLiteral);
-    rightKeyColumns = getEquiConditions().stream().map(Equality::getRightColumn).distinct().collect(Collectors.toSet());
+    rightKeyColumns = getEquiConditions().stream().map(Equality::getRightColumn).collect(Collectors.toSet());
+    requiredColumns = computeRequiredColumns(rightPrefix, equiConditions, nonEquiConditions);
   }
 
   /**
@@ -108,14 +111,18 @@ public class JoinConditionAnalysis
         nonEquiConditions.add(childExpr);
       } else {
         final Pair<Expr, Expr> decomposed = maybeDecomposed.get();
-        final Expr lhs = decomposed.lhs;
-        final Expr rhs = decomposed.rhs;
+        final Expr lhs = Objects.requireNonNull(decomposed.lhs);
+        final Expr rhs = Objects.requireNonNull(decomposed.rhs);
 
         if (isLeftExprAndRightColumn(lhs, rhs, rightPrefix)) {
           // rhs is a right-hand column; lhs is an expression solely of the left-hand side.
-          equiConditions.add(new Equality(lhs, rhs.getBindingIfIdentifier().substring(rightPrefix.length())));
+          equiConditions.add(
+              new Equality(lhs, Objects.requireNonNull(rhs.getBindingIfIdentifier()).substring(rightPrefix.length()))
+          );
         } else if (isLeftExprAndRightColumn(rhs, lhs, rightPrefix)) {
-          equiConditions.add(new Equality(rhs, lhs.getBindingIfIdentifier().substring(rightPrefix.length())));
+          equiConditions.add(
+              new Equality(rhs, Objects.requireNonNull(lhs.getBindingIfIdentifier()).substring(rightPrefix.length()))
+          );
         } else {
           nonEquiConditions.add(childExpr);
         }
@@ -127,9 +134,9 @@ public class JoinConditionAnalysis
 
   private static boolean isLeftExprAndRightColumn(final Expr a, final Expr b, final String rightPrefix)
   {
-    return a.analyzeInputs().getRequiredBindings().stream().noneMatch(c -> Joinables.isPrefixedBy(c, rightPrefix))
+    return a.analyzeInputs().getRequiredBindings().stream().noneMatch(c -> JoinPrefixUtils.isPrefixedBy(c, rightPrefix))
            && b.getBindingIfIdentifier() != null
-           && Joinables.isPrefixedBy(b.getBindingIfIdentifier(), rightPrefix);
+           && JoinPrefixUtils.isPrefixedBy(b.getBindingIfIdentifier(), rightPrefix);
   }
 
   /**
@@ -188,6 +195,15 @@ public class JoinConditionAnalysis
     return rightKeyColumns;
   }
 
+  /**
+   * Returns the set of column names required by this join condition. Columns from the right-hand side are returned
+   * with their prefixes included.
+   */
+  public Set<String> getRequiredColumns()
+  {
+    return requiredColumns;
+  }
+
   @Override
   public boolean equals(Object o)
   {
@@ -212,5 +228,25 @@ public class JoinConditionAnalysis
   public String toString()
   {
     return originalExpression;
+  }
+
+  private static Set<String> computeRequiredColumns(
+      final String rightPrefix,
+      final List<Equality> equiConditions,
+      final List<Expr> nonEquiConditions
+  )
+  {
+    final Set<String> requiredColumns = new HashSet<>();
+
+    for (Equality equality : equiConditions) {
+      requiredColumns.add(rightPrefix + equality.getRightColumn());
+      requiredColumns.addAll(equality.getLeftExpr().analyzeInputs().getRequiredBindings());
+    }
+
+    for (Expr expr : nonEquiConditions) {
+      requiredColumns.addAll(expr.analyzeInputs().getRequiredBindings());
+    }
+
+    return requiredColumns;
   }
 }

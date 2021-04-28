@@ -26,6 +26,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.util.concurrent.ListenableFuture;
+import org.apache.druid.common.config.NullHandling;
 import org.apache.druid.data.input.Committer;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.data.input.MapBasedInputRow;
@@ -37,10 +38,10 @@ import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.granularity.Granularities;
 import org.apache.druid.java.util.common.granularity.Granularity;
 import org.apache.druid.query.SegmentDescriptor;
+import org.apache.druid.segment.handoff.SegmentHandoffNotifier;
+import org.apache.druid.segment.handoff.SegmentHandoffNotifierFactory;
 import org.apache.druid.segment.loading.DataSegmentKiller;
 import org.apache.druid.segment.realtime.FireDepartmentMetrics;
-import org.apache.druid.segment.realtime.plumber.SegmentHandoffNotifier;
-import org.apache.druid.segment.realtime.plumber.SegmentHandoffNotifierFactory;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.partition.NumberedShardSpec;
 import org.easymock.EasyMock;
@@ -98,6 +99,10 @@ public class StreamAppenderatorDriverTest extends EasyMockSupport
   private TestSegmentHandoffNotifierFactory segmentHandoffNotifierFactory;
   private StreamAppenderatorDriver driver;
   private DataSegmentKiller dataSegmentKiller;
+
+  static {
+    NullHandling.initializeForTests();
+  }
 
   @Before
   public void setUp()
@@ -361,13 +366,13 @@ public class StreamAppenderatorDriverTest extends EasyMockSupport
 
   static TransactionalSegmentPublisher makeOkPublisher()
   {
-    return (segmentsToBeOverwritten, segmentsToPublish, commitMetadata) ->
+    return (segmentsToBeOverwritten, segmentsToBeDropped, segmentsToPublish, commitMetadata) ->
         SegmentPublishResult.ok(Collections.emptySet());
   }
 
   static TransactionalSegmentPublisher makeFailingPublisher(boolean failWithException)
   {
-    return (segmentsToBeOverwritten, segmentsToPublish, commitMetadata) -> {
+    return (segmentsToBeOverwritten, segmentsToBeDropped, segmentsToPublish, commitMetadata) -> {
       final RuntimeException exception = new RuntimeException("test");
       if (failWithException) {
         throw exception;

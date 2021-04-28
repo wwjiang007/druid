@@ -17,7 +17,7 @@
  */
 
 import { IResizeEntry, ResizeSensor } from '@blueprintjs/core';
-import ace from 'brace';
+import ace, { Editor } from 'brace';
 import escape from 'lodash.escape';
 import React from 'react';
 import AceEditor from 'react-ace';
@@ -29,7 +29,7 @@ import {
   SQL_KEYWORDS,
 } from '../../../../lib/keywords';
 import { SQL_DATA_TYPES, SQL_FUNCTIONS } from '../../../../lib/sql-docs';
-import { uniq } from '../../../utils';
+import { RowColumn, uniq } from '../../../utils';
 import { ColumnMetadata } from '../../../utils/column-metadata';
 
 import './query-input.scss';
@@ -56,6 +56,8 @@ export interface QueryInputState {
 }
 
 export class QueryInput extends React.PureComponent<QueryInputProps, QueryInputState> {
+  private aceEditor: Editor | undefined;
+
   static replaceDefaultAutoCompleter(): void {
     if (!langTools) return;
 
@@ -64,32 +66,42 @@ export class QueryInput extends React.PureComponent<QueryInputProps, QueryInputS
       SQL_EXPRESSION_PARTS.map(v => ({ name: v, value: v, score: 0, meta: 'keyword' })),
       SQL_CONSTANTS.map(v => ({ name: v, value: v, score: 0, meta: 'constant' })),
       SQL_DYNAMICS.map(v => ({ name: v, value: v, score: 0, meta: 'dynamic' })),
-      SQL_DATA_TYPES.map(v => ({ name: v.name, value: v.name, score: 0, meta: 'type' })),
+      SQL_DATA_TYPES.map(([name, runtime, description]) => ({
+        name,
+        value: name,
+        score: 0,
+        meta: 'type',
+        syntax: `Druid runtime type: ${runtime}`,
+        description,
+      })),
     );
-
-    const keywordCompleter = {
-      getCompletions: (_editor: any, _session: any, _pos: any, _prefix: any, callback: any) => {
-        return callback(null, keywordList);
-      },
-    };
 
     langTools.setCompleters([
       langTools.snippetCompleter,
       langTools.textCompleter,
-      keywordCompleter,
+      {
+        getCompletions: (_editor: any, _session: any, _pos: any, _prefix: any, callback: any) => {
+          return callback(null, keywordList);
+        },
+        getDocTooltip: (item: any) => {
+          if (item.meta === 'type') {
+            item.docHTML = QueryInput.makeDocHtml(item);
+          }
+        },
+      },
     ]);
   }
 
   static addFunctionAutoCompleter(): void {
     if (!langTools) return;
 
-    const functionList: any[] = SQL_FUNCTIONS.map(entry => {
+    const functionList: any[] = SQL_FUNCTIONS.map(([name, args, description]) => {
       return {
-        value: entry.name,
+        value: name,
         score: 80,
         meta: 'function',
-        syntax: entry.name + entry.arguments,
-        description: entry.description,
+        syntax: `${name}(${args})`,
+        description,
         completer: {
           insertMatch: (editor: any, data: any) => {
             editor.completer.insertMatch({ value: data.caption });
@@ -104,29 +116,17 @@ export class QueryInput extends React.PureComponent<QueryInputProps, QueryInputS
       },
       getDocTooltip: (item: any) => {
         if (item.meta === 'function') {
-          item.docHTML = QueryInput.completerToHtml(item);
+          item.docHTML = QueryInput.makeDocHtml(item);
         }
       },
     });
   }
 
-  static completerToHtml(item: any) {
+  static makeDocHtml(item: any) {
     return `
-<div class="function-doc">
-  <div class="function-doc-name">
-    <b>${escape(item.caption)}</b>
-  </div>
-  <hr />
-  <div>
-    <b>Syntax:</b>
-  </div>
-  <div>${escape(item.syntax)}</div>
-  <br />
-  <div>
-    <b>Description:</b>
-  </div>
-  <div>${escape(item.description)}</div>
-</div>`;
+<div class="doc-name">${escape(item.caption)}</div>
+<div class="doc-syntax">${escape(item.syntax)}</div>
+<div class="doc-description">${escape(item.description)}</div>`;
   }
 
   static getDerivedStateFromProps(props: QueryInputProps, state: QueryInputState) {
@@ -198,16 +198,28 @@ export class QueryInput extends React.PureComponent<QueryInputProps, QueryInputS
     }
   }
 
-  private handleAceContainerResize = (entries: IResizeEntry[]) => {
+  private readonly handleAceContainerResize = (entries: IResizeEntry[]) => {
     if (entries.length !== 1) return;
     this.setState({ editorHeight: entries[0].contentRect.height });
   };
 
-  private handleChange = (value: string) => {
+  private readonly handleChange = (value: string) => {
     // This gets the event as a second arg
     const { onQueryStringChange } = this.props;
     onQueryStringChange(value);
   };
+
+  public goToPosition(rowColumn: RowColumn) {
+    const { aceEditor } = this;
+    if (!aceEditor) return;
+    aceEditor.focus(); // Grab the focus
+    aceEditor.getSelection().moveCursorTo(rowColumn.row, rowColumn.column);
+    if (rowColumn.endRow && rowColumn.endColumn) {
+      aceEditor
+        .getSelection()
+        .selectToPosition({ row: rowColumn.endRow, column: rowColumn.endColumn });
+    }
+  }
 
   render(): JSX.Element {
     const { queryString, runeMode } = this.props;
@@ -224,7 +236,7 @@ export class QueryInput extends React.PureComponent<QueryInputProps, QueryInputS
               name="ace-editor"
               onChange={this.handleChange}
               focus
-              fontSize={14}
+              fontSize={13}
               width="100%"
               height={`${editorHeight}px`}
               showPrintMargin={false}
@@ -240,6 +252,11 @@ export class QueryInput extends React.PureComponent<QueryInputProps, QueryInputS
               }}
               style={{}}
               placeholder="SELECT * FROM ..."
+              onLoad={(editor: any) => {
+                editor.renderer.setPadding(10);
+                editor.renderer.setScrollMargin(10);
+                this.aceEditor = editor;
+              }}
             />
           </div>
         </ResizeSensor>

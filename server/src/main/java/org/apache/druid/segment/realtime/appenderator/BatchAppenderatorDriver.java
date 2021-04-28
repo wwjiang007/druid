@@ -22,10 +22,11 @@ package org.apache.druid.segment.realtime.appenderator;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.AsyncFunction;
+import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import org.apache.druid.data.input.InputRow;
 import org.apache.druid.java.util.common.ISE;
-import org.apache.druid.java.util.common.concurrent.ListenableFutures;
 import org.apache.druid.segment.loading.DataSegmentKiller;
 import org.apache.druid.segment.realtime.appenderator.SegmentWithState.SegmentState;
 import org.apache.druid.timeline.DataSegment;
@@ -136,14 +137,11 @@ public class BatchAppenderatorDriver extends BaseAppenderatorDriver
       long pushAndClearTimeoutMs
   ) throws InterruptedException, ExecutionException, TimeoutException
   {
-    final Set<SegmentIdWithShardSpec> requestedSegmentIdsForSequences = getAppendingSegments(sequenceNames)
-        .map(SegmentWithState::getSegmentIdentifier)
-        .collect(Collectors.toSet());
+    final Set<SegmentIdWithShardSpec> requestedSegmentIdsForSequences = getAppendingSegments(sequenceNames);
 
-
-    final ListenableFuture<SegmentsAndCommitMetadata> future = ListenableFutures.transformAsync(
+    final ListenableFuture<SegmentsAndCommitMetadata> future = Futures.transform(
         pushInBackground(null, requestedSegmentIdsForSequences, false),
-        this::dropInBackground
+        (AsyncFunction<SegmentsAndCommitMetadata, SegmentsAndCommitMetadata>) this::dropInBackground
     );
 
     final SegmentsAndCommitMetadata segmentsAndCommitMetadata =
@@ -193,13 +191,16 @@ public class BatchAppenderatorDriver extends BaseAppenderatorDriver
    * Publish all segments.
    *
    * @param segmentsToBeOverwritten segments which can be overwritten by new segments published by the given publisher
+   * @param segmentsToBeDropped     segments which will be dropped and marked unused
    * @param publisher               segment publisher
    *
    * @return a {@link ListenableFuture} for the publish task
    */
   public ListenableFuture<SegmentsAndCommitMetadata> publishAll(
       @Nullable final Set<DataSegment> segmentsToBeOverwritten,
-      final TransactionalSegmentPublisher publisher
+      @Nullable final Set<DataSegment> segmentsToBeDropped,
+      final TransactionalSegmentPublisher publisher,
+      final Function<Set<DataSegment>, Set<DataSegment>> outputSegmentsAnnotateFunction
   )
   {
     final Map<String, SegmentsForSequence> snapshot;
@@ -209,6 +210,7 @@ public class BatchAppenderatorDriver extends BaseAppenderatorDriver
 
     return publishInBackground(
         segmentsToBeOverwritten,
+        segmentsToBeDropped,
         new SegmentsAndCommitMetadata(
             snapshot
                 .values()
@@ -224,7 +226,8 @@ public class BatchAppenderatorDriver extends BaseAppenderatorDriver
                 .collect(Collectors.toList()),
             null
         ),
-        publisher
+        publisher,
+        outputSegmentsAnnotateFunction
     );
   }
 }

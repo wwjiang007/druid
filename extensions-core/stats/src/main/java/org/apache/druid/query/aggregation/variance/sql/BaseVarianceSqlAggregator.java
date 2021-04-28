@@ -22,11 +22,11 @@ package org.apache.druid.query.aggregation.variance.sql;
 import com.google.common.collect.ImmutableList;
 import org.apache.calcite.rel.core.AggregateCall;
 import org.apache.calcite.rel.core.Project;
+import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rex.RexBuilder;
 import org.apache.calcite.rex.RexNode;
 import org.apache.calcite.sql.SqlAggFunction;
 import org.apache.calcite.sql.fun.SqlStdOperatorTable;
-import org.apache.calcite.sql.type.SqlTypeName;
 import org.apache.druid.java.util.common.IAE;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.query.aggregation.AggregatorFactory;
@@ -39,6 +39,7 @@ import org.apache.druid.segment.VirtualColumn;
 import org.apache.druid.segment.column.RowSignature;
 import org.apache.druid.segment.column.ValueType;
 import org.apache.druid.sql.calcite.aggregation.Aggregation;
+import org.apache.druid.sql.calcite.aggregation.Aggregations;
 import org.apache.druid.sql.calcite.aggregation.SqlAggregator;
 import org.apache.druid.sql.calcite.expression.DruidExpression;
 import org.apache.druid.sql.calcite.expression.Expressions;
@@ -71,7 +72,7 @@ public abstract class BaseVarianceSqlAggregator implements SqlAggregator
         project,
         aggregateCall.getArgList().get(0)
     );
-    final DruidExpression input = Expressions.toDruidExpression(
+    final DruidExpression input = Aggregations.toDruidExpressionForNumericAggregator(
         plannerContext,
         rowSignature,
         inputOperand
@@ -81,8 +82,8 @@ public abstract class BaseVarianceSqlAggregator implements SqlAggregator
     }
 
     final AggregatorFactory aggregatorFactory;
-    final SqlTypeName sqlTypeName = inputOperand.getType().getSqlTypeName();
-    final ValueType inputType = Calcites.getValueTypeForSqlTypeName(sqlTypeName);
+    final RelDataType dataType = inputOperand.getType();
+    final ValueType inputType = Calcites.getValueTypeForRelDataType(dataType);
     final List<VirtualColumn> virtualColumns = new ArrayList<>();
     final DimensionSpec dimensionSpec;
     final String aggName = StringUtils.format("%s:agg", name);
@@ -95,7 +96,7 @@ public abstract class BaseVarianceSqlAggregator implements SqlAggregator
       dimensionSpec = input.getSimpleExtraction().toDimensionSpec(null, inputType);
     } else {
       VirtualColumn virtualColumn =
-          virtualColumnRegistry.getOrCreateVirtualColumnForExpression(plannerContext, input, sqlTypeName);
+          virtualColumnRegistry.getOrCreateVirtualColumnForExpression(plannerContext, input, dataType);
       dimensionSpec = new DefaultDimensionSpec(virtualColumn.getOutputName(), null, inputType);
       virtualColumns.add(virtualColumn);
     }

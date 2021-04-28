@@ -54,7 +54,8 @@ public class SinglePhaseSubTaskSpecTest
           new ParallelIndexIOConfig(
               null,
               new LocalInputSource(new File("baseDir"), "filter"),
-              new JsonInputFormat(null, null),
+              new JsonInputFormat(null, null, null),
+              null,
               null
           ),
           null

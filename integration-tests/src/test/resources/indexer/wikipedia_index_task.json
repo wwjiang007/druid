@@ -73,13 +73,14 @@
             "type": "index",
             "firehose": {
                 "type": "local",
-                "baseDir": "/resources/data/batch_index",
+                "baseDir": "/resources/data/batch_index/json",
                 "filter": "wikipedia_index_data*"
             }
         },
         "tuningConfig": {
             "type": "index",
-            "maxRowsPerSegment": 3
+            "maxRowsPerSegment": 3,
+            "awaitSegmentAvailabilityTimeoutMillis": %%SEGMENT_AVAIL_TIMEOUT_MILLIS%%
         }
     }
 }

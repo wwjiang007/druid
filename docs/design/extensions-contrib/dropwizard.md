@@ -91,7 +91,7 @@ druid.emitter.dropwizard.reporters=[{"type":"console","emitIntervalInSecs":30}"}
 ```
 
 ### Default Metrics Mapping
-Latest default metrics mapping can be found [here] (https://github.com/apache/druid/tree/master/extensions-contrib/dropwizard/src/main/resources/defaultMetricDimensions.json)
+Latest default metrics mapping can be found [here] (https://github.com/apache/druid/blob/master/extensions-contrib/dropwizard-emitter/src/main/resources/defaultMetricDimensions.json)
 ```json
 {
   "query/time": {
@@ -465,19 +465,19 @@ Latest default metrics mapping can be found [here] (https://github.com/apache/dr
   },
   "jvm/bufferpool/counter": {
     "dimensions": [
-      "bufferPoolName"
+      "bufferpoolName"
     ],
     "type": "gauge"
   },
   "jvm/bufferpool/used": {
     "dimensions": [
-      "bufferPoolName"
+      "bufferpoolName"
     ],
     "type": "gauge"
   },
   "jvm/bufferpool/capacity": {
     "dimensions": [
-      "bufferPoolName"
+      "bufferpoolName"
     ],
     "type": "gauge"
   },
@@ -507,20 +507,23 @@ Latest default metrics mapping can be found [here] (https://github.com/apache/dr
   },
   "jvm/gc/counter": {
     "dimensions": [
-      "gcName"
+      "gcName",
+      "gcGen"
     ],
     "type": "counter"
   },
   "jvm/gc/cpu": {
     "dimensions": [
-      "gcName"
+      "gcName",
+      "gcGen"
     ],
     "type": "timer",
     "timeUnit": "NANOSECONDS"
   },
   "ingest/events/buffered": {
     "dimensions": [
-      "serviceName, bufferCapacity"
+      "serviceName",
+      "bufferCapacity"
     ],
     "type": "gauge"
   },

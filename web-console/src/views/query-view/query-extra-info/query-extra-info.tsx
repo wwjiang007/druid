@@ -28,43 +28,44 @@ import {
 } from '@blueprintjs/core';
 import { IconNames } from '@blueprintjs/icons';
 import copy from 'copy-to-clipboard';
-import React from 'react';
+import { QueryResult } from 'druid-query-toolkit';
+import React, { MouseEvent } from 'react';
 
-import { AppToaster } from '../../../singletons/toaster';
+import { AppToaster } from '../../../singletons';
 import { pluralIfNeeded } from '../../../utils';
 
 import './query-extra-info.scss';
 
-export interface QueryExtraInfoData {
-  queryId?: string;
-  sqlQueryId?: string;
-  startTime: Date;
-  endTime: Date;
-  numResults: number;
-  wrapQueryLimit: number | undefined;
-}
-
 export interface QueryExtraInfoProps {
-  queryExtraInfo: QueryExtraInfoData;
+  queryResult: QueryResult;
   onDownload: (filename: string, format: string) => void;
+  onLoadMore: () => void;
 }
 
 export const QueryExtraInfo = React.memo(function QueryExtraInfo(props: QueryExtraInfoProps) {
-  const { queryExtraInfo, onDownload } = props;
+  const { queryResult, onDownload, onLoadMore } = props;
+  const wrapQueryLimit = queryResult.getSqlOuterLimit();
+  const hasMoreResults = queryResult.getNumResults() === wrapQueryLimit;
 
-  function handleQueryInfoClick() {
-    const id = queryExtraInfo.queryId || queryExtraInfo.sqlQueryId;
-    if (!id) return;
+  function handleQueryInfoClick(e: MouseEvent<HTMLDivElement>) {
+    if (e.altKey) {
+      if (hasMoreResults) {
+        onLoadMore();
+      }
+    } else {
+      const id = queryResult.queryId || queryResult.sqlQueryId;
+      if (!id) return;
 
-    copy(id, { format: 'text/plain' });
-    AppToaster.show({
-      message: 'Query ID copied to clipboard',
-      intent: Intent.SUCCESS,
-    });
+      copy(id, { format: 'text/plain' });
+      AppToaster.show({
+        message: 'Query ID copied to clipboard',
+        intent: Intent.SUCCESS,
+      });
+    }
   }
 
   function handleDownload(format: string) {
-    const id = queryExtraInfo.queryId || queryExtraInfo.sqlQueryId;
+    const id = queryResult.queryId || queryResult.sqlQueryId;
     if (!id) return;
 
     onDownload(`query-${id}.${format}`, format);
@@ -79,40 +80,34 @@ export const QueryExtraInfo = React.memo(function QueryExtraInfo(props: QueryExt
     </Menu>
   );
 
-  let resultCount: string;
-  if (
-    queryExtraInfo.wrapQueryLimit &&
-    queryExtraInfo.numResults === queryExtraInfo.wrapQueryLimit
-  ) {
-    resultCount = `${queryExtraInfo.numResults - 1}+ results`;
-  } else {
-    resultCount = pluralIfNeeded(queryExtraInfo.numResults, 'result');
-  }
-
-  const elapsed = queryExtraInfo.endTime.valueOf() - queryExtraInfo.startTime.valueOf();
+  const resultCount = hasMoreResults
+    ? `${queryResult.getNumResults() - 1}+ results`
+    : pluralIfNeeded(queryResult.getNumResults(), 'result');
 
   let tooltipContent: JSX.Element | undefined;
-  if (queryExtraInfo.queryId) {
+  if (queryResult.queryId) {
     tooltipContent = (
       <>
-        Query ID: <strong>{queryExtraInfo.queryId}</strong> (click to copy)
+        Query ID: <strong>{queryResult.queryId}</strong> (click to copy)
       </>
     );
-  } else if (queryExtraInfo.sqlQueryId) {
+  } else if (queryResult.sqlQueryId) {
     tooltipContent = (
       <>
-        SQL query ID: <strong>{queryExtraInfo.sqlQueryId}</strong> (click to copy)
+        SQL query ID: <strong>{queryResult.sqlQueryId}</strong> (click to copy)
       </>
     );
   }
 
   return (
     <div className="query-extra-info">
-      <div className="query-info" onClick={handleQueryInfoClick}>
-        <Tooltip content={tooltipContent} hoverOpenDelay={500}>
-          {`${resultCount} in ${(elapsed / 1000).toFixed(2)}s`}
-        </Tooltip>
-      </div>
+      {typeof queryResult.queryDuration !== 'undefined' && (
+        <div className="query-info" onClick={handleQueryInfoClick}>
+          <Tooltip content={tooltipContent} hoverOpenDelay={500}>
+            {`${resultCount} in ${(queryResult.queryDuration / 1000).toFixed(2)}s`}
+          </Tooltip>
+        </div>
+      )}
       <Popover className="download-button" content={downloadMenu} position={Position.BOTTOM_RIGHT}>
         <Button icon={IconNames.DOWNLOAD} minimal />
       </Popover>

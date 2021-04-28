@@ -19,17 +19,18 @@
 
 package org.apache.druid.server.coordinator;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Ordering;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.inject.Inject;
+import com.google.inject.Provider;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import it.unimi.dsi.fastutil.objects.Object2IntMaps;
 import it.unimi.dsi.fastutil.objects.Object2IntOpenHashMap;
 import it.unimi.dsi.fastutil.objects.Object2LongMap;
-import it.unimi.dsi.fastutil.objects.Object2LongOpenHashMap;
 import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.utils.ZKPaths;
 import org.apache.druid.client.DataSourcesSnapshot;
@@ -41,10 +42,12 @@ import org.apache.druid.client.ServerInventoryView;
 import org.apache.druid.client.coordinator.Coordinator;
 import org.apache.druid.client.indexing.IndexingServiceClient;
 import org.apache.druid.common.config.JacksonConfigManager;
+import org.apache.druid.curator.ZkEnablementConfig;
 import org.apache.druid.curator.discovery.ServiceAnnouncer;
 import org.apache.druid.discovery.DruidLeaderSelector;
 import org.apache.druid.guice.ManageLifecycle;
 import org.apache.druid.guice.annotations.CoordinatorIndexingServiceDuty;
+import org.apache.druid.guice.annotations.CoordinatorMetadataStoreManagementDuty;
 import org.apache.druid.guice.annotations.Self;
 import org.apache.druid.java.util.common.DateTimes;
 import org.apache.druid.java.util.common.IAE;
@@ -58,8 +61,10 @@ import org.apache.druid.java.util.common.lifecycle.LifecycleStart;
 import org.apache.druid.java.util.common.lifecycle.LifecycleStop;
 import org.apache.druid.java.util.emitter.EmittingLogger;
 import org.apache.druid.java.util.emitter.service.ServiceEmitter;
+import org.apache.druid.java.util.emitter.service.ServiceMetricEvent;
 import org.apache.druid.metadata.MetadataRuleManager;
 import org.apache.druid.metadata.SegmentsMetadataManager;
+import org.apache.druid.query.DruidMetrics;
 import org.apache.druid.server.DruidNode;
 import org.apache.druid.server.coordinator.duty.BalanceSegments;
 import org.apache.druid.server.coordinator.duty.CompactSegments;
@@ -72,6 +77,7 @@ import org.apache.druid.server.coordinator.duty.UnloadUnusedSegments;
 import org.apache.druid.server.coordinator.rules.LoadRule;
 import org.apache.druid.server.coordinator.rules.Rule;
 import org.apache.druid.server.initialization.ZkPathsConfig;
+import org.apache.druid.server.initialization.jetty.ServiceUnavailableException;
 import org.apache.druid.server.lookup.cache.LookupCoordinatorManager;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.SegmentId;
@@ -91,6 +97,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 /**
@@ -132,7 +139,10 @@ public class DruidCoordinator
   private final SegmentsMetadataManager segmentsMetadataManager;
   private final ServerInventoryView serverInventoryView;
   private final MetadataRuleManager metadataRuleManager;
+
+  @Nullable // Null if zk is disabled
   private final CuratorFramework curator;
+
   private final ServiceEmitter emitter;
   private final IndexingServiceClient indexingServiceClient;
   private final ScheduledExecutorService exec;
@@ -141,6 +151,7 @@ public class DruidCoordinator
   private final ServiceAnnouncer serviceAnnouncer;
   private final DruidNode self;
   private final Set<CoordinatorDuty> indexingServiceDuties;
+  private final Set<CoordinatorDuty> metadataStoreManagementDuties;
   private final BalancerStrategyFactory factory;
   private final LookupCoordinatorManager lookupCoordinatorManager;
   private final DruidLeaderSelector coordLeaderSelector;
@@ -149,6 +160,15 @@ public class DruidCoordinator
 
   private volatile boolean started = false;
   private volatile SegmentReplicantLookup segmentReplicantLookup = null;
+  private volatile DruidCluster cluster = null;
+
+  private int cachedBalancerThreadNumber;
+  private ListeningExecutorService balancerExec;
+
+  private static final String HISTORICAL_MANAGEMENT_DUTIES_DUTY_GROUP = "HistoricalManagementDuties";
+  private static final String METADATA_STORE_MANAGEMENT_DUTIES_DUTY_GROUP = "MetadataStoreManagementDuties";
+  private static final String INDEXING_SERVICE_DUTIES_DUTY_GROUP = "IndexingServiceDuties";
+  private static final String COMPACT_SEGMENTS_DUTIES_DUTY_GROUP = "CompactSegmentsDuties";
 
   @Inject
   public DruidCoordinator(
@@ -158,18 +178,20 @@ public class DruidCoordinator
       SegmentsMetadataManager segmentsMetadataManager,
       ServerInventoryView serverInventoryView,
       MetadataRuleManager metadataRuleManager,
-      CuratorFramework curator,
+      Provider<CuratorFramework> curatorProvider,
       ServiceEmitter emitter,
       ScheduledExecutorFactory scheduledExecutorFactory,
       IndexingServiceClient indexingServiceClient,
       LoadQueueTaskMaster taskMaster,
       ServiceAnnouncer serviceAnnouncer,
       @Self DruidNode self,
+      @CoordinatorMetadataStoreManagementDuty Set<CoordinatorDuty> metadataStoreManagementDuties,
       @CoordinatorIndexingServiceDuty Set<CoordinatorDuty> indexingServiceDuties,
       BalancerStrategyFactory factory,
       LookupCoordinatorManager lookupCoordinatorManager,
       @Coordinator DruidLeaderSelector coordLeaderSelector,
-      CompactSegments compactSegments
+      CompactSegments compactSegments,
+      ZkEnablementConfig zkEnablementConfig
   )
   {
     this(
@@ -179,7 +201,7 @@ public class DruidCoordinator
         segmentsMetadataManager,
         serverInventoryView,
         metadataRuleManager,
-        curator,
+        curatorProvider,
         emitter,
         scheduledExecutorFactory,
         indexingServiceClient,
@@ -188,10 +210,12 @@ public class DruidCoordinator
         self,
         new ConcurrentHashMap<>(),
         indexingServiceDuties,
+        metadataStoreManagementDuties,
         factory,
         lookupCoordinatorManager,
         coordLeaderSelector,
-        compactSegments
+        compactSegments,
+        zkEnablementConfig
     );
   }
 
@@ -202,7 +226,7 @@ public class DruidCoordinator
       SegmentsMetadataManager segmentsMetadataManager,
       ServerInventoryView serverInventoryView,
       MetadataRuleManager metadataRuleManager,
-      CuratorFramework curator,
+      Provider<CuratorFramework> curatorProvider,
       ServiceEmitter emitter,
       ScheduledExecutorFactory scheduledExecutorFactory,
       IndexingServiceClient indexingServiceClient,
@@ -211,10 +235,12 @@ public class DruidCoordinator
       DruidNode self,
       ConcurrentMap<String, LoadQueuePeon> loadQueuePeonMap,
       Set<CoordinatorDuty> indexingServiceDuties,
+      Set<CoordinatorDuty> metadataStoreManagementDuties,
       BalancerStrategyFactory factory,
       LookupCoordinatorManager lookupCoordinatorManager,
       DruidLeaderSelector coordLeaderSelector,
-      CompactSegments compactSegments
+      CompactSegments compactSegments,
+      ZkEnablementConfig zkEnablementConfig
   )
   {
     this.config = config;
@@ -224,13 +250,18 @@ public class DruidCoordinator
     this.segmentsMetadataManager = segmentsMetadataManager;
     this.serverInventoryView = serverInventoryView;
     this.metadataRuleManager = metadataRuleManager;
-    this.curator = curator;
+    if (zkEnablementConfig.isEnabled()) {
+      this.curator = curatorProvider.get();
+    } else {
+      this.curator = null;
+    }
     this.emitter = emitter;
     this.indexingServiceClient = indexingServiceClient;
     this.taskMaster = taskMaster;
     this.serviceAnnouncer = serviceAnnouncer;
     this.self = self;
     this.indexingServiceDuties = indexingServiceDuties;
+    this.metadataStoreManagementDuties = metadataStoreManagementDuties;
 
     this.exec = scheduledExecutorFactory.create(1, "Coordinator-Exec--%d");
 
@@ -257,38 +288,47 @@ public class DruidCoordinator
    */
   public Map<String, Object2LongMap<String>> computeUnderReplicationCountsPerDataSourcePerTier()
   {
-    final Map<String, Object2LongMap<String>> underReplicationCountsPerDataSourcePerTier = new HashMap<>();
-
-    if (segmentReplicantLookup == null) {
-      return underReplicationCountsPerDataSourcePerTier;
-    }
-
     final Iterable<DataSegment> dataSegments = segmentsMetadataManager.iterateAllUsedSegments();
+    return computeUnderReplicationCountsPerDataSourcePerTierForSegmentsInternal(dataSegments, false);
+  }
 
-    final DateTime now = DateTimes.nowUtc();
+  /**
+   * @return tier -> { dataSource -> underReplicationCount } map
+   */
+  public Map<String, Object2LongMap<String>> computeUnderReplicationCountsPerDataSourcePerTierUsingClusterView()
+  {
+    final Iterable<DataSegment> dataSegments = segmentsMetadataManager.iterateAllUsedSegments();
+    return computeUnderReplicationCountsPerDataSourcePerTierForSegmentsInternal(dataSegments, true);
+  }
 
-    for (final DataSegment segment : dataSegments) {
-      final List<Rule> rules = metadataRuleManager.getRulesWithDefault(segment.getDataSource());
+  /**
+   * segmentReplicantLookup use in this method could potentially be stale since it is only updated on coordinator runs.
+   * However, this is ok as long as the {@param dataSegments} is refreshed/latest as this would at least still ensure
+   * that the stale data in segmentReplicantLookup would be under counting replication levels,
+   * rather than potentially falsely reporting that everything is available.
+   *
+   * @return tier -> { dataSource -> underReplicationCount } map
+   */
+  public Map<String, Object2LongMap<String>> computeUnderReplicationCountsPerDataSourcePerTierForSegments(
+      Iterable<DataSegment> dataSegments
+  )
+  {
+    return computeUnderReplicationCountsPerDataSourcePerTierForSegmentsInternal(dataSegments, false);
+  }
 
-      for (final Rule rule : rules) {
-        if (!(rule instanceof LoadRule && rule.appliesTo(segment, now))) {
-          continue;
-        }
-
-        ((LoadRule) rule)
-            .getTieredReplicants()
-            .forEach((final String tier, final Integer ruleReplicants) -> {
-              int currentReplicants = segmentReplicantLookup.getLoadedReplicants(segment.getId(), tier);
-              Object2LongMap<String> underReplicationPerDataSource = underReplicationCountsPerDataSourcePerTier
-                  .computeIfAbsent(tier, ignored -> new Object2LongOpenHashMap<>());
-              ((Object2LongOpenHashMap<String>) underReplicationPerDataSource)
-                  .addTo(segment.getDataSource(), Math.max(ruleReplicants - currentReplicants, 0));
-            });
-        break; // only the first matching rule applies
-      }
-    }
-
-    return underReplicationCountsPerDataSourcePerTier;
+  /**
+   * segmentReplicantLookup or cluster use in this method could potentially be stale since it is only updated on coordinator runs.
+   * However, this is ok as long as the {@param dataSegments} is refreshed/latest as this would at least still ensure
+   * that the stale data in segmentReplicantLookup and cluster would be under counting replication levels,
+   * rather than potentially falsely reporting that everything is available.
+   *
+   * @return tier -> { dataSource -> underReplicationCount } map
+   */
+  public Map<String, Object2LongMap<String>> computeUnderReplicationCountsPerDataSourcePerTierForSegmentsUsingClusterView(
+      Iterable<DataSegment> dataSegments
+  )
+  {
+    return computeUnderReplicationCountsPerDataSourcePerTierForSegmentsInternal(dataSegments, true);
   }
 
   public Object2IntMap<String> computeNumsUnavailableUsedSegmentsPerDataSource()
@@ -320,7 +360,7 @@ public class DruidCoordinator
 
     for (ImmutableDruidDataSource dataSource : dataSources) {
       final Set<DataSegment> segments = Sets.newHashSet(dataSource.getSegments());
-      final int numUsedSegments = segments.size();
+      final int numPublishedSegments = segments.size();
 
       // remove loaded segments
       for (DruidServer druidServer : serverInventoryView.getInventory()) {
@@ -333,10 +373,10 @@ public class DruidCoordinator
           }
         }
       }
-      final int numUnloadedSegments = segments.size();
+      final int numUnavailableSegments = segments.size();
       loadStatus.put(
           dataSource.getName(),
-          100 * ((double) (numUsedSegments - numUnloadedSegments) / (double) numUsedSegments)
+          100 * ((double) (numPublishedSegments - numUnavailableSegments) / (double) numPublishedSegments)
       );
     }
 
@@ -347,6 +387,17 @@ public class DruidCoordinator
   public Long getTotalSizeOfSegmentsAwaitingCompaction(String dataSource)
   {
     return compactSegments.getTotalSizeOfSegmentsAwaitingCompaction(dataSource);
+  }
+
+  @Nullable
+  public AutoCompactionSnapshot getAutoCompactionSnapshotForDataSource(String dataSource)
+  {
+    return compactSegments.getAutoCompactionSnapshot(dataSource);
+  }
+
+  public Map<String, AutoCompactionSnapshot> getAutoCompactionSnapshot()
+  {
+    return compactSegments.getAutoCompactionSnapshot();
   }
 
   public CoordinatorDynamicConfig getDynamicConfigs()
@@ -443,7 +494,7 @@ public class DruidCoordinator
             () -> {
               try {
                 if (serverInventoryView.isSegmentLoadedByServer(toServer.getName(), segment) &&
-                    curator.checkExists().forPath(toLoadQueueSegPath) == null &&
+                    (curator == null || curator.checkExists().forPath(toLoadQueueSegPath) == null) &&
                     !dropPeon.getSegmentsToDrop().contains(segment)) {
                   dropPeon.dropSegment(segment, loadPeonCallback);
                 } else {
@@ -467,6 +518,18 @@ public class DruidCoordinator
         callback.execute();
       }
     }
+  }
+
+  @VisibleForTesting
+  public int getCachedBalancerThreadNumber()
+  {
+    return cachedBalancerThreadNumber;
+  }
+
+  @VisibleForTesting
+  public ListeningExecutorService getBalancerExec()
+  {
+    return balancerExec;
   }
 
   @LifecycleStart
@@ -510,7 +573,70 @@ public class DruidCoordinator
       started = false;
 
       exec.shutdownNow();
+
+      if (balancerExec != null) {
+        balancerExec.shutdownNow();
+      }
     }
+  }
+
+  public void runCompactSegmentsDuty()
+  {
+    final int startingLeaderCounter = coordLeaderSelector.localTerm();
+    DutiesRunnable compactSegmentsDuty = new DutiesRunnable(makeCompactSegmentsDuty(), startingLeaderCounter, COMPACT_SEGMENTS_DUTIES_DUTY_GROUP);
+    compactSegmentsDuty.run();
+  }
+
+  private Map<String, Object2LongMap<String>> computeUnderReplicationCountsPerDataSourcePerTierForSegmentsInternal(
+      Iterable<DataSegment> dataSegments,
+      boolean computeUsingClusterView
+  )
+  {
+    final Map<String, Object2LongMap<String>> underReplicationCountsPerDataSourcePerTier = new HashMap<>();
+
+    if (segmentReplicantLookup == null) {
+      return underReplicationCountsPerDataSourcePerTier;
+    }
+
+    if (computeUsingClusterView && cluster == null) {
+      throw new ServiceUnavailableException(
+          "coordinator hasn't populated information about cluster yet, try again later");
+    }
+
+    final DateTime now = DateTimes.nowUtc();
+
+    for (final DataSegment segment : dataSegments) {
+      final List<Rule> rules = metadataRuleManager.getRulesWithDefault(segment.getDataSource());
+
+      for (final Rule rule : rules) {
+        if (!rule.appliesTo(segment, now)) {
+          // Rule did not match. Continue to the next Rule.
+          continue;
+        }
+        if (!rule.canLoadSegments()) {
+          // Rule matched but rule does not and cannot load segments.
+          // Hence, there is no need to update underReplicationCountsPerDataSourcePerTier map
+          break;
+        }
+
+        if (computeUsingClusterView) {
+          rule.updateUnderReplicatedWithClusterView(
+              underReplicationCountsPerDataSourcePerTier,
+              segmentReplicantLookup,
+              cluster,
+              segment
+          );
+        } else {
+          rule.updateUnderReplicated(underReplicationCountsPerDataSourcePerTier, segmentReplicantLookup, segment);
+        }
+
+        // Only the first matching rule applies. This is because the Coordinator cycle through all used segments
+        // and match each segment with the first rule that applies. Each segment may only match a single rule.
+        break;
+      }
+    }
+
+    return underReplicationCountsPerDataSourcePerTier;
   }
 
   private void becomeLeader()
@@ -534,21 +660,31 @@ public class DruidCoordinator
       final List<Pair<? extends DutiesRunnable, Duration>> dutiesRunnables = new ArrayList<>();
       dutiesRunnables.add(
           Pair.of(
-              new DutiesRunnable(makeHistoricalManagementDuties(), startingLeaderCounter),
+              new DutiesRunnable(makeHistoricalManagementDuties(), startingLeaderCounter, HISTORICAL_MANAGEMENT_DUTIES_DUTY_GROUP),
               config.getCoordinatorPeriod()
           )
       );
       if (indexingServiceClient != null) {
         dutiesRunnables.add(
             Pair.of(
-                new DutiesRunnable(makeIndexingServiceDuties(), startingLeaderCounter),
+                new DutiesRunnable(makeIndexingServiceDuties(), startingLeaderCounter, INDEXING_SERVICE_DUTIES_DUTY_GROUP),
                 config.getCoordinatorIndexingPeriod()
             )
         );
       }
+      dutiesRunnables.add(
+          Pair.of(
+              new DutiesRunnable(makeMetadataStoreManagementDuties(), startingLeaderCounter, METADATA_STORE_MANAGEMENT_DUTIES_DUTY_GROUP),
+              config.getCoordinatorMetadataStoreManagementPeriod()
+          )
+      );
 
       for (final Pair<? extends DutiesRunnable, Duration> dutiesRunnable : dutiesRunnables) {
-        ScheduledExecutors.scheduleWithFixedDelay(
+        // CompactSegmentsDuty can takes a non trival amount of time to complete.
+        // Hence, we schedule at fixed rate to make sure the other tasks still run at approximately every
+        // config.getCoordinatorIndexingPeriod() period. Note that cautious should be taken
+        // if setting config.getCoordinatorIndexingPeriod() lower than the default value.
+        ScheduledExecutors.scheduleAtFixedRate(
             exec,
             config.getCoordinatorStartDelay(),
             dutiesRunnable.rhs,
@@ -591,6 +727,11 @@ public class DruidCoordinator
       lookupCoordinatorManager.stop();
       metadataRuleManager.stop();
       segmentsMetadataManager.stopPollingDatabasePeriodically();
+
+      if (balancerExec != null) {
+        balancerExec.shutdownNow();
+        balancerExec = null;
+      }
     }
   }
 
@@ -611,8 +752,9 @@ public class DruidCoordinator
   {
     List<CoordinatorDuty> duties = new ArrayList<>();
     duties.add(new LogUsedSegments());
-    duties.add(compactSegments);
     duties.addAll(indexingServiceDuties);
+    // CompactSegmentsDuty should be the last duty as it can take a long time to complete
+    duties.addAll(makeCompactSegmentsDuty());
 
     log.debug(
         "Done making indexing service duties %s",
@@ -621,23 +763,74 @@ public class DruidCoordinator
     return ImmutableList.copyOf(duties);
   }
 
-  public class DutiesRunnable implements Runnable
+  private List<CoordinatorDuty> makeMetadataStoreManagementDuties()
+  {
+    List<CoordinatorDuty> duties = ImmutableList.<CoordinatorDuty>builder()
+                                                .addAll(metadataStoreManagementDuties)
+                                                .build();
+
+    log.debug(
+        "Done making metadata store management duties %s",
+        duties.stream().map(duty -> duty.getClass().getName()).collect(Collectors.toList())
+    );
+    return ImmutableList.copyOf(duties);
+  }
+
+  private List<CoordinatorDuty> makeCompactSegmentsDuty()
+  {
+    return ImmutableList.of(compactSegments);
+  }
+
+  @VisibleForTesting
+  protected class DutiesRunnable implements Runnable
   {
     private final long startTimeNanos = System.nanoTime();
     private final List<CoordinatorDuty> duties;
     private final int startingLeaderCounter;
+    private final String dutiesRunnableAlias;
 
-    protected DutiesRunnable(List<CoordinatorDuty> duties, final int startingLeaderCounter)
+    protected DutiesRunnable(List<CoordinatorDuty> duties, final int startingLeaderCounter, String alias)
     {
       this.duties = duties;
       this.startingLeaderCounter = startingLeaderCounter;
+      this.dutiesRunnableAlias = alias;
+    }
+
+    @VisibleForTesting
+    protected void initBalancerExecutor()
+    {
+      final int currentNumber = getDynamicConfigs().getBalancerComputeThreads();
+      final String threadNameFormat = "coordinator-cost-balancer-%s";
+      // fist time initialization
+      if (balancerExec == null) {
+        balancerExec = MoreExecutors.listeningDecorator(Execs.multiThreaded(
+            currentNumber,
+            threadNameFormat
+        ));
+        cachedBalancerThreadNumber = currentNumber;
+        return;
+      }
+
+      if (cachedBalancerThreadNumber != currentNumber) {
+        log.info(
+            "balancerComputeThreads has been changed from [%s] to [%s], recreating the thread pool.",
+            cachedBalancerThreadNumber,
+            currentNumber
+        );
+        balancerExec.shutdownNow();
+        balancerExec = MoreExecutors.listeningDecorator(Execs.multiThreaded(
+            currentNumber,
+            threadNameFormat
+        ));
+        cachedBalancerThreadNumber = currentNumber;
+      }
     }
 
     @Override
     public void run()
     {
-      ListeningExecutorService balancerExec = null;
       try {
+        final long globalStart = System.nanoTime();
         synchronized (lock) {
           if (!coordLeaderSelector.isLeader()) {
             log.info("LEGGO MY EGGO. [%s] is leader.", coordLeaderSelector.getCurrentLeader());
@@ -658,10 +851,7 @@ public class DruidCoordinator
           }
         }
 
-        balancerExec = MoreExecutors.listeningDecorator(Execs.multiThreaded(
-            getDynamicConfigs().getBalancerComputeThreads(),
-            "coordinator-cost-balancer-%s"
-        ));
+        initBalancerExecutor();
         BalancerStrategy balancerStrategy = factory.createBalancerStrategy(balancerExec);
 
         // Do coordinator stuff.
@@ -695,22 +885,27 @@ public class DruidCoordinator
               && coordLeaderSelector.isLeader()
               && startingLeaderCounter == coordLeaderSelector.localTerm()) {
 
+            final long start = System.nanoTime();
             params = duty.run(params);
+            final long end = System.nanoTime();
 
             if (params == null) {
               // This duty wanted to cancel the run. No log message, since the duty should have logged a reason.
               return;
+            } else {
+              params.getCoordinatorStats().addToDutyStat("runtime", duty.getClass().getName(), TimeUnit.NANOSECONDS.toMillis(end - start));
             }
           }
         }
+        // Emit the runtime of the full DutiesRunnable
+        params.getEmitter().emit(
+            new ServiceMetricEvent.Builder()
+                .setDimension(DruidMetrics.DUTY_GROUP, dutiesRunnableAlias)
+                .build("coordinator/global/time", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - globalStart))
+        );
       }
       catch (Exception e) {
         log.makeAlert(e, "Caught exception, ignoring so that schedule keeps going.").emit();
-      }
-      finally {
-        if (balancerExec != null) {
-          balancerExec.shutdownNow();
-        }
       }
     }
   }
@@ -731,8 +926,8 @@ public class DruidCoordinator
 
       startPeonsForNewServers(currentServers);
 
-      final DruidCluster cluster = prepareCluster(params, currentServers);
-      segmentReplicantLookup = SegmentReplicantLookup.make(cluster);
+      cluster = prepareCluster(params, currentServers);
+      segmentReplicantLookup = SegmentReplicantLookup.make(cluster, getDynamicConfigs().getReplicateAfterLoadTimeout());
 
       stopPeonsForDisappearedServers(currentServers);
 
@@ -740,7 +935,6 @@ public class DruidCoordinator
                    .withDruidCluster(cluster)
                    .withLoadManagementPeons(loadManagementPeons)
                    .withSegmentReplicantLookup(segmentReplicantLookup)
-                   .withBalancerReferenceTimestamp(DateTimes.nowUtc())
                    .build();
     }
 
@@ -749,7 +943,7 @@ public class DruidCoordinator
       List<ImmutableDruidServer> currentServers = serverInventoryView
           .getInventory()
           .stream()
-          .filter(DruidServer::segmentReplicatable)
+          .filter(DruidServer::isSegmentReplicationOrBroadcastTarget)
           .map(DruidServer::toImmutableDruidServer)
           .collect(Collectors.toList());
 

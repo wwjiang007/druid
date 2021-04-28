@@ -52,6 +52,7 @@ import org.apache.druid.segment.DimensionSelector;
 import org.apache.druid.segment.IndexBuilder;
 import org.apache.druid.segment.RowAdapter;
 import org.apache.druid.segment.TestHelper;
+import org.apache.druid.segment.column.ColumnConfig;
 import org.apache.druid.segment.column.RowSignature;
 import org.apache.druid.segment.column.ValueType;
 import org.apache.druid.segment.incremental.IncrementalIndexSchema;
@@ -99,6 +100,7 @@ public class JoinTestHelper
                   .add("regionIsoCode", ValueType.STRING)
                   .add("countryIsoCode", ValueType.STRING)
                   .add("regionName", ValueType.STRING)
+                  .add("extraField", ValueType.STRING)
                   .build();
 
   private static final ColumnProcessorFactory<Supplier<Object>> SIMPLE_READER =
@@ -141,6 +143,9 @@ public class JoinTestHelper
         }
       };
 
+  public static final String INDEXED_TABLE_VERSION = DateTimes.nowUtc().toString();
+  public static final byte[] INDEXED_TABLE_CACHE_KEY = new byte[] {1, 2, 3};
+
   private static RowAdapter<Map<String, Object>> createMapRowAdapter(final RowSignature signature)
   {
     return new RowAdapter<Map<String, Object>>()
@@ -167,15 +172,19 @@ public class JoinTestHelper
 
   public static IndexBuilder createFactIndexBuilder(final File tmpDir) throws IOException
   {
-    return createFactIndexBuilder(tmpDir, -1);
+    return createFactIndexBuilder(TestHelper.NO_CACHE_COLUMN_CONFIG, tmpDir, -1);
   }
 
-  public static IndexBuilder createFactIndexBuilder(final File tmpDir, final int numRows) throws IOException
+  public static IndexBuilder createFactIndexBuilder(
+      final ColumnConfig columnConfig,
+      final File tmpDir,
+      final int numRows
+  ) throws IOException
   {
     return withRowsFromResource(
         "/wikipedia/data.json",
         rows -> IndexBuilder
-            .create()
+            .create(columnConfig)
             .tmpDir(tmpDir)
             .schema(
                 new IncrementalIndexSchema.Builder()
@@ -254,7 +263,23 @@ public class JoinTestHelper
             rows,
             createMapRowAdapter(COUNTRIES_SIGNATURE),
             COUNTRIES_SIGNATURE,
-            ImmutableSet.of("countryNumber", "countryIsoCode")
+            ImmutableSet.of("countryNumber", "countryIsoCode"),
+            INDEXED_TABLE_VERSION
+        )
+    );
+  }
+
+  public static RowBasedIndexedTable<Map<String, Object>> createCountriesIndexedTableWithCacheKey() throws IOException
+  {
+    return withRowsFromResource(
+        "/wikipedia/countries.json",
+        rows -> new RowBasedIndexedTable<>(
+            rows,
+            createMapRowAdapter(COUNTRIES_SIGNATURE),
+            COUNTRIES_SIGNATURE,
+            ImmutableSet.of("countryNumber", "countryIsoCode"),
+            INDEXED_TABLE_VERSION,
+            INDEXED_TABLE_CACHE_KEY
         )
     );
   }
@@ -267,7 +292,8 @@ public class JoinTestHelper
             rows,
             createMapRowAdapter(REGIONS_SIGNATURE),
             REGIONS_SIGNATURE,
-            ImmutableSet.of("regionIsoCode", "countryIsoCode")
+            ImmutableSet.of("regionIsoCode", "countryIsoCode"),
+            INDEXED_TABLE_VERSION
         )
     );
   }

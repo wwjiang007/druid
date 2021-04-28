@@ -80,7 +80,8 @@ public class JobHelperTest
                       null
                   ),
                   new JSONPathSpec(true, ImmutableList.of()),
-                  ImmutableMap.of()
+                  ImmutableMap.of(),
+                  null
               )
           ),
           JacksonUtils.TYPE_REFERENCE_MAP_STRING_OBJECT
@@ -164,6 +165,7 @@ public class JobHelperTest
                 null,
                 null,
                 null,
+                null,
                 false,
                 false,
                 false,
@@ -182,6 +184,7 @@ public class JobHelperTest
                 null,
                 false,
                 false,
+                null,
                 null,
                 null,
                 null,

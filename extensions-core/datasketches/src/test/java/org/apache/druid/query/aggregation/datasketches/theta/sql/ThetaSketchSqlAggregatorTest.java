@@ -28,9 +28,11 @@ import org.apache.calcite.schema.SchemaPlus;
 import org.apache.druid.common.config.NullHandling;
 import org.apache.druid.java.util.common.StringUtils;
 import org.apache.druid.java.util.common.granularity.Granularities;
+import org.apache.druid.java.util.common.granularity.PeriodGranularity;
 import org.apache.druid.java.util.common.io.Closer;
 import org.apache.druid.query.Druids;
 import org.apache.druid.query.Query;
+import org.apache.druid.query.QueryContexts;
 import org.apache.druid.query.QueryDataSource;
 import org.apache.druid.query.QueryRunnerFactoryConglomerate;
 import org.apache.druid.query.aggregation.CountAggregatorFactory;
@@ -44,7 +46,6 @@ import org.apache.druid.query.aggregation.datasketches.theta.SketchSetPostAggreg
 import org.apache.druid.query.aggregation.post.ArithmeticPostAggregator;
 import org.apache.druid.query.aggregation.post.FieldAccessPostAggregator;
 import org.apache.druid.query.aggregation.post.FinalizingFieldAccessPostAggregator;
-import org.apache.druid.query.dimension.DefaultDimensionSpec;
 import org.apache.druid.query.expression.TestExprMacroTable;
 import org.apache.druid.query.groupby.GroupByQuery;
 import org.apache.druid.query.spec.MultipleIntervalSegmentSpec;
@@ -72,6 +73,8 @@ import org.apache.druid.sql.calcite.util.QueryLogHook;
 import org.apache.druid.sql.calcite.util.SpecificSegmentsQuerySegmentWalker;
 import org.apache.druid.timeline.DataSegment;
 import org.apache.druid.timeline.partition.LinearShardSpec;
+import org.joda.time.DateTimeZone;
+import org.joda.time.Period;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
@@ -79,14 +82,20 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.rules.TemporaryFolder;
+import org.junit.runner.RunWith;
+import org.junit.runners.Parameterized;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
+@RunWith(Parameterized.class)
 public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
 {
   private static final String DATA_SOURCE = "foo";
@@ -94,9 +103,6 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
   private static QueryRunnerFactoryConglomerate conglomerate;
   private static Closer resourceCloser;
   private static AuthenticationResult authenticationResult = CalciteTests.REGULAR_USER_AUTH_RESULT;
-  private static final Map<String, Object> QUERY_CONTEXT_DEFAULT = ImmutableMap.of(
-      PlannerContext.CTX_SQL_QUERY_ID, "dummy"
-  );
 
   @BeforeClass
   public static void setUpClass()
@@ -112,13 +118,36 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
   }
 
   @Rule
+  public ExpectedException expectedException = ExpectedException.none();
+
+  @Rule
   public TemporaryFolder temporaryFolder = new TemporaryFolder();
 
   @Rule
   public QueryLogHook queryLogHook = QueryLogHook.create();
 
+  private final Map<String, Object> queryContext;
   private SpecificSegmentsQuerySegmentWalker walker;
   private SqlLifecycleFactory sqlLifecycleFactory;
+
+  public ThetaSketchSqlAggregatorTest(final String vectorize)
+  {
+    this.queryContext = ImmutableMap.of(
+        PlannerContext.CTX_SQL_QUERY_ID, "dummy",
+        QueryContexts.VECTORIZE_KEY, vectorize,
+        QueryContexts.VECTORIZE_VIRTUAL_COLUMNS_KEY, vectorize
+    );
+  }
+
+  @Parameterized.Parameters(name = "vectorize = {0}")
+  public static Collection<?> constructorFeeder()
+  {
+    final List<Object[]> constructors = new ArrayList<>();
+    for (String vectorize : new String[]{"false", "true", "force"}) {
+      constructors.add(new Object[]{vectorize});
+    }
+    return constructors;
+  }
 
   @Before
   public void setUp() throws Exception
@@ -204,21 +233,30 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
   @Test
   public void testApproxCountDistinctThetaSketch() throws Exception
   {
+    // Cannot vectorize due to SUBSTRING.
+    cannotVectorize();
+
     SqlLifecycle sqlLifecycle = sqlLifecycleFactory.factorize();
     final String sql = "SELECT\n"
                        + "  SUM(cnt),\n"
-                       + "  APPROX_COUNT_DISTINCT_DS_THETA(dim2),\n" // uppercase
-                       + "  APPROX_COUNT_DISTINCT_DS_THETA(dim2) FILTER(WHERE dim2 <> ''),\n" // lowercase; also, filtered
-                       + "  APPROX_COUNT_DISTINCT_DS_THETA(SUBSTRING(dim2, 1, 1)),\n" // on extractionFn
-                       + "  APPROX_COUNT_DISTINCT_DS_THETA(SUBSTRING(dim2, 1, 1) || 'x'),\n" // on expression
-                       + "  APPROX_COUNT_DISTINCT_DS_THETA(thetasketch_dim1, 32768),\n" // on native theta sketch column
-                       + "  APPROX_COUNT_DISTINCT_DS_THETA(thetasketch_dim1)\n" // on native theta sketch column
+                       + "  APPROX_COUNT_DISTINCT_DS_THETA(dim2),\n"
+                       // uppercase
+                       + "  APPROX_COUNT_DISTINCT_DS_THETA(dim2) FILTER(WHERE dim2 <> ''),\n"
+                       // lowercase; also, filtered
+                       + "  APPROX_COUNT_DISTINCT_DS_THETA(SUBSTRING(dim2, 1, 1)),\n"
+                       // on extractionFn
+                       + "  APPROX_COUNT_DISTINCT_DS_THETA(SUBSTRING(dim2, 1, 1) || 'x'),\n"
+                       // on expression
+                       + "  APPROX_COUNT_DISTINCT_DS_THETA(thetasketch_dim1, 32768),\n"
+                       // on native theta sketch column
+                       + "  APPROX_COUNT_DISTINCT_DS_THETA(thetasketch_dim1)\n"
+                       // on native theta sketch column
                        + "FROM druid.foo";
 
     // Verify results
     final List<Object[]> results = sqlLifecycle.runSimple(
         sql,
-        QUERY_CONTEXT_DEFAULT,
+        queryContext,
         DEFAULT_PARAMETERS,
         authenticationResult
     ).toList();
@@ -317,8 +355,9 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
                       new SketchMergeAggregatorFactory("a6", "thetasketch_dim1", null, null, null, null)
                   )
               )
-              .context(ImmutableMap.of("skipEmptyBuckets", true, PlannerContext.CTX_SQL_QUERY_ID, "dummy"))
-              .build(),
+              .context(queryContext)
+              .build()
+              .withOverriddenContext(ImmutableMap.of("skipEmptyBuckets", true)),
         Iterables.getOnlyElement(queryLogHook.getRecordedQueries())
     );
   }
@@ -326,6 +365,9 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
   @Test
   public void testAvgDailyCountDistinctThetaSketch() throws Exception
   {
+    // Can't vectorize due to outer query (it operates on an inlined data source, which cannot be vectorized).
+    cannotVectorize();
+
     SqlLifecycle sqlLifecycle = sqlLifecycleFactory.factorize();
 
     final String sql = "SELECT\n"
@@ -335,7 +377,7 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
     // Verify results
     final List<Object[]> results = sqlLifecycle.runSimple(
         sql,
-        QUERY_CONTEXT_DEFAULT,
+        queryContext,
         DEFAULT_PARAMETERS,
         authenticationResult
     ).toList();
@@ -351,56 +393,67 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
 
     Query expected = GroupByQuery.builder()
                                  .setDataSource(
-                                     new QueryDataSource(
-                                         GroupByQuery.builder()
-                                                     .setDataSource(CalciteTests.DATASOURCE1)
-                                                     .setInterval(new MultipleIntervalSegmentSpec(ImmutableList.of(
-                                                         Filtration.eternity())))
-                                                     .setGranularity(Granularities.ALL)
-                                                     .setVirtualColumns(
-                                                         new ExpressionVirtualColumn(
-                                                             "v0",
-                                                             "timestamp_floor(\"__time\",'P1D',null,'UTC')",
-                                                             ValueType.LONG,
-                                                             TestExprMacroTable.INSTANCE
-                                                         )
-                                                     )
-                                                     .setDimensions(
-                                                         Collections.singletonList(
-                                                             new DefaultDimensionSpec(
-                                                                 "v0",
-                                                                 "d0",
-                                                                 ValueType.LONG
-                                                             )
-                                                         )
-                                                     )
-                                                     .setAggregatorSpecs(
-                                                         Collections.singletonList(
-                                                             new SketchMergeAggregatorFactory(
-                                                                 "a0:a",
-                                                                 "cnt",
-                                                                 null,
-                                                                 null,
-                                                                 null,
-                                                                 null
-                                                             )
-                                                         )
-                                                     )
-                                                     .setPostAggregatorSpecs(
-                                                         ImmutableList.of(
-                                                             new FinalizingFieldAccessPostAggregator("a0", "a0:a")
-                                                         )
-                                                     )
-                                                     .setContext(QUERY_CONTEXT_DEFAULT)
-                                                     .build()
+                                     new QueryDataSource(Druids.newTimeseriesQueryBuilder()
+                                                               .dataSource(CalciteTests.DATASOURCE1)
+                                                               .intervals(new MultipleIntervalSegmentSpec(ImmutableList.of(
+                                                                   Filtration.eternity()
+                                                               )))
+                                                               .granularity(new PeriodGranularity(
+                                                                   Period.days(1),
+                                                                   null,
+                                                                   DateTimeZone.UTC
+                                                               ))
+                                                               .aggregators(
+                                                                   Collections.singletonList(
+                                                                       new SketchMergeAggregatorFactory(
+                                                                           "a0:a",
+                                                                           "cnt",
+                                                                           null,
+                                                                           null,
+                                                                           null,
+                                                                           null
+                                                                       )
+                                                                   )
+                                                               )
+                                                               .postAggregators(
+                                                                   ImmutableList.of(
+                                                                       new FinalizingFieldAccessPostAggregator(
+                                                                           "a0",
+                                                                           "a0:a"
+                                                                       )
+                                                                   )
+                                                               )
+                                                               .context(queryContext)
+                                                               .build()
+                                                               .withOverriddenContext(
+                                                                   BaseCalciteQueryTest.getTimeseriesContextWithFloorTime(
+                                                                       ImmutableMap.of(
+                                                                           "skipEmptyBuckets",
+                                                                           true,
+                                                                           "sqlQueryId",
+                                                                           "dummy"
+                                                                       ),
+                                                                       "d0"
+                                                                   )
+                                                               )
                                      )
                                  )
                                  .setInterval(new MultipleIntervalSegmentSpec(ImmutableList.of(Filtration.eternity())))
                                  .setGranularity(Granularities.ALL)
-                                 .setAggregatorSpecs(Arrays.asList(
-                                     new LongSumAggregatorFactory("_a0:sum", "a0"),
-                                     new CountAggregatorFactory("_a0:count")
-                                 ))
+                                 .setAggregatorSpecs(
+                                     NullHandling.replaceWithDefault()
+                                     ? Arrays.asList(
+                                         new LongSumAggregatorFactory("_a0:sum", "a0"),
+                                         new CountAggregatorFactory("_a0:count")
+                                     )
+                                     : Arrays.asList(
+                                         new LongSumAggregatorFactory("_a0:sum", "a0"),
+                                         new FilteredAggregatorFactory(
+                                             new CountAggregatorFactory("_a0:count"),
+                                             BaseCalciteQueryTest.not(BaseCalciteQueryTest.selector("a0", null, null))
+                                         )
+                                     )
+                                 )
                                  .setPostAggregatorSpecs(
                                      ImmutableList.of(
                                          new ArithmeticPostAggregator(
@@ -413,7 +466,7 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
                                          )
                                      )
                                  )
-                                 .setContext(QUERY_CONTEXT_DEFAULT)
+                                 .setContext(queryContext)
                                  .build();
 
     Query actual = Iterables.getOnlyElement(queryLogHook.getRecordedQueries());
@@ -441,7 +494,7 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
     // Verify results
     final List<Object[]> results = sqlLifecycle.runSimple(
         sql,
-        QUERY_CONTEXT_DEFAULT,
+        queryContext,
         DEFAULT_PARAMETERS,
         authenticationResult
     ).toList();
@@ -600,8 +653,9 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
                       null
                   )
               )
-              .context(ImmutableMap.of("skipEmptyBuckets", true, PlannerContext.CTX_SQL_QUERY_ID, "dummy"))
-              .build();
+              .context(queryContext)
+              .build()
+              .withOverriddenContext(ImmutableMap.of("skipEmptyBuckets", true));
 
 
     // Verify query
@@ -619,7 +673,7 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
     // Verify results
     final List<Object[]> results = sqlLifecycle.runSimple(
         sql2,
-        QUERY_CONTEXT_DEFAULT,
+        queryContext,
         DEFAULT_PARAMETERS,
         authenticationResult
     ).toList();
@@ -666,11 +720,19 @@ public class ThetaSketchSqlAggregatorTest extends CalciteTestBase
                       null
                   )
               )
-              .context(ImmutableMap.of("skipEmptyBuckets", true, PlannerContext.CTX_SQL_QUERY_ID, "dummy"))
-              .build();
-
+              .context(queryContext)
+              .build()
+              .withOverriddenContext(ImmutableMap.of("skipEmptyBuckets", true));
 
     // Verify query
     Assert.assertEquals(expectedQuery, actualQuery);
+  }
+
+  private void cannotVectorize()
+  {
+    if (QueryContexts.Vectorize.fromString((String) queryContext.get(QueryContexts.VECTORIZE_KEY))
+        == QueryContexts.Vectorize.FORCE) {
+      expectedException.expectMessage("Cannot vectorize");
+    }
   }
 }
